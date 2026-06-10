@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.charging.station.mapper.SessionMapper">
+
+    <!-- 查询车辆的活跃充电会话 -->
+    <select id="getActiveSessionByCarId" resultType="com.charging.station.domain.ChargingSession">
+        SELECT * FROM charging_session
+        WHERE car_id = #{carId}
+          AND session_status = '进行中'
+        ORDER BY start_time DESC
+        LIMIT 1
+    </select>
+
+    <!-- 查询充电桩的活跃充电会话 -->
+    <select id="getActiveSessionByPileId" resultType="com.charging.station.domain.ChargingSession">
+        SELECT * FROM charging_session
+        WHERE pile_id = #{pileId}
+          AND session_status = '进行中'
+        ORDER BY start_time DESC
+        LIMIT 1
+    </select>
+
+    <!-- 插入充电会话 -->
+    <insert id="insertChargingSession">
+        INSERT INTO charging_session (
+            session_id, car_id, pile_id, request_amount,
+            start_time, session_status
+        ) VALUES (
+            #{sessionId}, #{carId}, #{pileId}, #{requestAmount},
+            #{startTime}, #{sessionStatus}
+        )
+    </insert>
+
+    <!-- 更新充电会话 -->
+    <update id="updateChargingSession">
+        UPDATE charging_session
+        SET end_time = #{endTime},
+            session_status = #{sessionStatus},
+            charge_amount = #{chargeAmount},
+            charge_duration = #{chargeDuration},
+            charge_fee = #{chargeFee},
+            service_fee = #{serviceFee},
+            total_fee = #{totalFee}
+        WHERE session_id = #{sessionId}
+    </update>
+
+</mapper>

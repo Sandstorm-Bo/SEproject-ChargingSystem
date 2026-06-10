@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.charging.station.mapper.BillMapper">
+
+    <!-- 根据车辆和日期查询账单 -->
+    <select id="getBillsByCarIdAndDate" resultType="com.charging.station.domain.Bill">
+        SELECT * FROM bill
+        WHERE car_id = #{carId}
+        <if test="date != null">
+            AND DATE(date) = DATE(#{date})
+        </if>
+        ORDER BY date DESC
+    </select>
+
+    <!-- 根据账单ID查询详单 -->
+    <select id="getDetailedListByBillId" resultType="com.charging.station.domain.DetailedList">
+        SELECT * FROM detailed_list
+        WHERE bill_id = #{billId}
+        ORDER BY start_time
+    </select>
+
+    <!-- 插入账单 -->
+    <insert id="insertBill">
+        INSERT INTO bill (
+            bill_id, car_id, date, total_charge_fee,
+            total_service_fee, total_fee, bill_status
+        ) VALUES (
+            #{billId}, #{carId}, #{date}, #{totalChargeFee},
+            #{totalServiceFee}, #{totalFee}, #{billStatus}
+        )
+    </insert>
+
+    <!-- 插入详单 -->
+    <insert id="insertDetailedList">
+        INSERT INTO detailed_list (
+            detail_id, bill_id, pile_id, charge_amount, charge_duration,
+            start_time, end_time, charge_fee, service_fee, subtotal_fee
+        ) VALUES (
+            #{detailId}, #{billId}, #{pileId}, #{chargeAmount}, #{chargeDuration},
+            #{startTime}, #{endTime}, #{chargeFee}, #{serviceFee}, #{subtotalFee}
+        )
+    </insert>
+
+</mapper>

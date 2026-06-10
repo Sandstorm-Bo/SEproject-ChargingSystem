@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.charging.station.mapper.RequestMapper">
+
+    <!-- Result Map -->
+    <resultMap id="ChargingRequestResultMap" type="com.charging.station.domain.ChargingRequest">
+        <id property="requestId" column="request_id"/>
+        <result property="carId" column="car_id"/>
+        <result property="requestMode" column="request_mode"/>
+        <result property="requestAmount" column="request_amount"/>
+        <result property="queueNum" column="queue_num"/>
+        <result property="requestTime" column="request_time"/>
+        <result property="requestStatus" column="request_status"/>
+        <result property="pileId" column="pile_id"/>
+        <result property="queuePosition" column="queue_position"/>
+    </resultMap>
+
+    <!-- 查询充电请求 -->
+    <select id="getChargingRequest" resultMap="ChargingRequestResultMap">
+        SELECT * FROM charging_request
+        WHERE car_id = #{carId}
+        ORDER BY request_time DESC
+        LIMIT 1
+    </select>
+
+    <!-- 查询活跃的充电请求 -->
+    <select id="getActiveRequestByCarId" resultMap="ChargingRequestResultMap">
+        SELECT * FROM charging_request
+        WHERE car_id = #{carId}
+          AND request_status IN ('WAITING', 'QUEUED_AT_PILE', 'CHARGING')
+        ORDER BY request_time DESC
+        LIMIT 1
+    </select>
+
+    <!-- 插入充电请求 -->
+    <insert id="insertChargingRequest">
+        INSERT INTO charging_request (
+            request_id, car_id, request_mode, request_amount,
+            queue_num, request_time, request_status
+        ) VALUES (
+            #{requestId}, #{carId}, #{requestMode}, #{requestAmount},
+            #{queueNum}, #{requestTime}, #{requestStatus}
+        )
+    </insert>
+
+    <!-- 更新充电量 -->
+    <update id="updateRequestAmount">
+        UPDATE charging_request
+        SET request_amount = #{requestAmount}
+        WHERE request_id = #{requestId}
+    </update>
+
+    <!-- 更新充电模式 -->
+    <update id="updateRequestMode">
+        UPDATE charging_request
+        SET request_mode = #{requestMode},
+            queue_num = #{queueNum}
+        WHERE request_id = #{requestId}
+    </update>
+
+    <!-- 更新请求状态 -->
+    <update id="updateRequestStatus">
+        UPDATE charging_request
+        SET request_status = #{requestStatus},
+            pile_id = #{pileId},
+            queue_position = #{queuePosition}
+        WHERE request_id = #{requestId}
+    </update>
+
+</mapper>

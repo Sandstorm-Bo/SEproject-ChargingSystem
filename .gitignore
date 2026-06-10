@@ -1,0 +1,32 @@
+# Java
+*.class
+*.log
+*.jar
+*.war
+*.ear
+target/
+out/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Maven
+.mvn/
+mvnw
+mvnw.cmd
+
+# Test
+test_results.json
+*.pyc
+
+# Backup
+cleanup_backup_*/
+*.bak
+
+# Temp
+*.tmp
+*.swp
+*~
