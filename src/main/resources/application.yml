@@ -25,3 +25,7 @@ server:
 logging:
   level:
     com.charging.station: debug
+
+# 仿真时间加速因子（1 真实秒 = N 仿真秒）。验收按 1:10 比例尺设为 10；默认 120 便于本地快速演示。
+charging:
+  time-acceleration: 120

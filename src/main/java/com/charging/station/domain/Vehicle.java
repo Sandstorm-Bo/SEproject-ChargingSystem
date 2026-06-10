@@ -10,13 +10,9 @@ public class Vehicle {
     private String plateNumber;        // 车牌号
     private String vehicleType;        // 车辆类型
     private Double batteryCapacity;    // 电池总容量（度）
-    private Double currentBatteryLevel; // 当前电量（度）
-    private String carState;           // 当前状态（由 ChargingRequest.requestStatus 维护）
 
-    // Constructors
     public Vehicle() {}
 
-    // Getters and Setters
     public String getVehicleId() {
         return vehicleId;
     }
@@ -49,25 +45,6 @@ public class Vehicle {
         this.batteryCapacity = batteryCapacity;
     }
 
-    public Double getCurrentBatteryLevel() {
-        return currentBatteryLevel;
-    }
-
-    public void setCurrentBatteryLevel(Double currentBatteryLevel) {
-        this.currentBatteryLevel = currentBatteryLevel;
-    }
-
-    public String getCarState() {
-        return carState;
-    }
-
-    public void setCarState(String carState) {
-        this.carState = carState;
-    }
-
-    /**
-     * 验证请求充电量是否合法
-     */
     public boolean isValidRequestAmount(Double amount) {
         if (amount == null || amount <= 0) {
             return false;
@@ -76,12 +53,5 @@ public class Vehicle {
             return false;
         }
         return true;
-    }
-
-    /**
-     * 获取电池剩余容量
-     */
-    public Double getRemainingCapacity() {
-        return batteryCapacity - currentBatteryLevel;
     }
 }

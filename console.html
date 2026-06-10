@@ -3,400 +3,444 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>充电桩系统 - 控制台</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>控制台 - 充电桩系统</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
             min-height: 100vh;
             padding: 2rem;
+            color: white;
+        }
+        .container { max-width: 1600px; margin: 0 auto; }
+        .header {
+            background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+            padding: 2rem;
+            border-radius: 20px;
+            margin-bottom: 2rem;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(139,92,246,0.3);
+        }
+        .header h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
+        .main-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
         }
         .card {
-            background: white;
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
             border-radius: 20px;
             padding: 2rem;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            transition: transform 0.2s, box-shadow 0.2s;
         }
-        .card:hover { transform: translateY(-2px); box-shadow: 0 25px 70px rgba(0,0,0,0.35); }
-        .btn {
-            padding: 0.75rem 2rem;
+        .piles-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .pile-card {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
             border-radius: 12px;
+            padding: 1.25rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .pile-card:hover {
+            transform: translateY(-2px);
+            background: rgba(255,255,255,0.15);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+        }
+        .pile-card.charging {
+            border-color: #10b981;
+            background: rgba(16,185,129,0.15);
+        }
+        .pile-card.fault {
+            border-color: #ef4444;
+            background: rgba(239,68,68,0.15);
+        }
+        .pile-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+        .pile-id {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: white;
+        }
+        .pile-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .pile-status.charging { background: #10b981; color: white; }
+        .pile-status.available { background: #3b82f6; color: white; }
+        .pile-status.fault { background: #ef4444; color: white; }
+        .control-section {
+            margin-bottom: 2rem;
+        }
+        .control-section h3 {
+            margin-bottom: 1rem;
+            font-size: 1.125rem;
+            color: white;
+        }
+        .slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255,255,255,0.2);
+            outline: none;
+            -webkit-appearance: none;
+        }
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #8b5cf6, #6366f1);
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(139,92,246,0.5);
+        }
+        .speed-display {
+            text-align: center;
+            padding: 1.25rem;
+            background: rgba(139,92,246,0.15);
+            border-radius: 12px;
+            margin-top: 1rem;
+            border: 1px solid rgba(139,92,246,0.3);
+        }
+        .speed-value {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #8b5cf6;
+        }
+        .btn-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .btn {
+            padding: 0.75rem;
             border: none;
+            border-radius: 8px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
-            font-size: 0.95rem;
+            font-size: 0.875rem;
         }
-        .btn:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,0,0,0.2); }
-        .btn:active { transform: translateY(0); }
-        .btn-primary { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
-        .btn-success { background: #10b981; color: white; }
-        .btn-danger { background: #ef4444; color: white; }
-        .btn-warning { background: #f59e0b; color: white; }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-        .input {
-            padding: 0.75rem 1rem;
-            border: 2px solid #e5e7eb;
-            border-radius: 12px;
-            font-size: 1rem;
-            transition: all 0.2s;
-            width: 100%;
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
-        .input:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,0.1); }
-        .status-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 8px;
+        .btn-warning {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: white;
         }
-        .status-running { background: #10b981; animation: pulse 2s infinite; }
-        .status-idle { background: #94a3b8; }
-        .status-error { background: #ef4444; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-        .log-entry {
-            padding: 0.75rem 1rem;
-            margin-bottom: 0.5rem;
+        .btn-success {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+        }
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #8b5cf6, #6366f1);
+            color: white;
+        }
+        .stat-grid {
+            display: grid;
+            gap: 0.75rem;
+        }
+        .stat-item {
+            padding: 1rem;
+            background: rgba(255,255,255,0.05);
             border-radius: 8px;
-            font-family: 'SF Mono', 'Monaco', monospace;
-            font-size: 0.85rem;
-            border-left: 4px solid;
-            animation: slideIn 0.3s ease-out;
-        }
-        @keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
-        .log-info { background: #f0f9ff; border-color: #0ea5e9; color: #0c4a6e; }
-        .log-success { background: #f0fdf4; border-color: #10b981; color: #065f46; }
-        .log-error { background: #fef2f2; border-color: #ef4444; color: #991b1b; }
-        .log-warning { background: #fffbeb; border-color: #f59e0b; color: #92400e; }
-        .pile-card {
-            padding: 1.5rem;
-            border-radius: 16px;
-            border: 2px solid #e5e7eb;
-            transition: all 0.2s;
-            cursor: pointer;
-        }
-        .pile-card:hover { border-color: #667eea; background: #f8f9ff; }
-        .pile-card.active { border-color: #667eea; background: linear-gradient(135deg, #f8f9ff 0%, #e8ecff 100%); box-shadow: 0 8px 20px rgba(102,126,234,0.2); }
-        .pile-card.fault { border-color: #ef4444; background: #fef2f2; }
-        .stat-card {
-            text-align: center;
-            padding: 1.5rem;
-            border-radius: 16px;
-            background: linear-gradient(135deg, #f8f9ff 0%, #fff 100%);
-            border: 2px solid #e8ecff;
-        }
-        .stat-value { font-size: 2.5rem; font-weight: 800; color: #667eea; margin: 0.5rem 0; }
-        .stat-label { font-size: 0.875rem; color: #64748b; font-weight: 500; }
-        .modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.6);
-            display: none;
+            display: flex;
+            justify-content: space-between;
             align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            animation: fadeIn 0.2s;
         }
-        .modal.show { display: flex; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        .modal-content {
-            background: white;
-            border-radius: 20px;
-            padding: 2rem;
-            max-width: 500px;
-            width: 90%;
-            animation: slideUp 0.3s;
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #8b5cf6;
         }
-        @keyframes slideUp { from { transform: translateY(50px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .log-container {
+            background: rgba(0,0,0,0.4);
+            border-radius: 12px;
+            padding: 1rem;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'SF Mono', monospace;
+            font-size: 0.8125rem;
+        }
+        .log-line {
+            padding: 0.25rem 0;
+            color: #94a3b8;
+        }
+        .log-line.info { color: #38bdf8; }
+        .log-line.success { color: #22c55e; }
+        .log-line.error { color: #ef4444; }
+        .log-line.warning { color: #f59e0b; }
     </style>
 </head>
 <body>
-    <div class="max-w-7xl mx-auto">
-        <!-- 顶部标题 -->
-        <div class="card mb-6">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-4">
-                    <div style="width: 64px; height: 64px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 32px;">⚡</div>
-                    <div>
-                        <h1 style="font-size: 1.875rem; font-weight: 800; color: #1e293b;">充电桩系统控制台</h1>
-                        <p style="color: #64748b; font-size: 0.875rem;">测试验收 · 数据管理 · 实时监控</p>
+    <div class="container">
+        <div id="srvBar" style="margin-bottom:1rem;padding:.6rem 1rem;background:rgba(0,0,0,.28);border-radius:10px;display:flex;gap:.5rem;align-items:center;font-size:.85rem;color:#fff;flex-wrap:wrap;">
+            <span>🌐 服务器地址</span>
+            <input id="serverAddr" placeholder="如 192.168.1.10:8080 或 http://host:8080" style="flex:1;min-width:220px;padding:.45rem .6rem;border-radius:8px;border:1px solid #cbd5e1;color:#1e293b;">
+            <button onclick="applyServer()" style="padding:.45rem 1.1rem;border:none;border-radius:8px;background:#8b5cf6;color:#fff;font-weight:700;cursor:pointer;">连接</button>
+            <span id="srvState" style="opacity:.9;"></span>
+        </div>
+        <div class="header">
+            <h1>🛠️ 测试控制台</h1>
+            <p>系统测试 · 故障模拟 · 数据管理</p>
+        </div>
+
+        <div class="main-grid">
+            <!-- 监控区 -->
+            <div class="card">
+                <h2 style="margin-bottom: 1.5rem;">⚡ 充电桩监控</h2>
+
+                <h3 style="font-size: 1rem; color: rgba(255,255,255,0.7); margin-bottom: 1rem;">快充区</h3>
+                <div class="piles-grid" id="fastPiles"></div>
+
+                <h3 style="font-size: 1rem; color: rgba(255,255,255,0.7); margin-bottom: 1rem; margin-top: 1.5rem;">慢充区</h3>
+                <div class="piles-grid" id="tricklePiles"></div>
+
+                <!-- 日志 -->
+                <div style="margin-top: 2rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h3 style="margin: 0;">📝 系统日志</h3>
+                        <button class="btn btn-primary" onclick="clearLogs()" style="padding: 0.5rem 1rem; font-size: 0.75rem;">清空</button>
+                    </div>
+                    <div class="log-container" id="logContainer"></div>
+                </div>
+            </div>
+
+            <!-- 控制区 -->
+            <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                <!-- 时间控制 -->
+                <div class="card">
+                    <div class="control-section" style="margin: 0;">
+                        <h3>⏱ 时间流速</h3>
+                        <input type="range" class="slider" id="timeSlider" min="1" max="4" value="2">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: rgba(255,255,255,0.5); margin-top: 0.5rem;">
+                            <span>1x</span><span>10x</span><span>60x</span><span>即时</span>
+                        </div>
+                        <div class="speed-display">
+                            <div class="speed-value" id="currentSpeed">10x</div>
+                        </div>
                     </div>
                 </div>
-                <div class="flex items-center gap-3">
-                    <span class="status-dot status-running"></span>
-                    <span style="font-weight: 600; color: #10b981;">系统运行中</span>
+
+                <!-- 故障模拟 -->
+                <div class="card">
+                    <div class="control-section" style="margin: 0;">
+                        <h3>🔧 故障调度策略</h3>
+                        <select id="faultStrategy" style="width: 100%; padding: 0.75rem; margin-bottom: 1rem; border-radius: 8px; border: 2px solid #6366f1; font-size: 1rem;">
+                            <option value="priority">🔺 优先级调度（故障车辆优先）</option>
+                            <option value="timeorder">⏱️ 时间顺序调度（重排所有车辆）</option>
+                        </select>
+                        <h3>⚡ 快捷操作</h3>
+                        <div class="btn-grid">
+                            <button class="btn btn-warning" onclick="setFault('P_F1')">F1故障</button>
+                            <button class="btn btn-warning" onclick="setFault('P_F2')">F2故障</button>
+                            <button class="btn btn-warning" onclick="setFault('P_T1')">T1故障</button>
+                            <button class="btn btn-warning" onclick="setFault('P_T2')">T2故障</button>
+                        </div>
+                        <button class="btn btn-success" style="width: 100%;" onclick="recoverAll()">恢复全部</button>
+                    </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- 控制区 -->
-        <div class="grid grid-cols-3 gap-6 mb-6">
-            <div class="stat-card">
-                <div style="font-size: 2.5rem;">⚙️</div>
-                <div class="stat-value" id="timeScale">1:10</div>
-                <div class="stat-label">时间流速</div>
-                <button onclick="changeTimeScale()" class="btn btn-primary mt-3" style="width: 100%;">调整流速</button>
-            </div>
-            <div class="stat-card">
-                <div style="font-size: 2.5rem;">🔧</div>
-                <div class="stat-value" id="faultCount">0</div>
-                <div class="stat-label">故障数量</div>
-                <button onclick="showPileModal()" class="btn btn-warning mt-3" style="width: 100%;">模拟故障</button>
-            </div>
-            <div class="stat-card">
-                <div style="font-size: 2.5rem;">🗄️</div>
-                <div class="stat-value">-</div>
-                <div class="stat-label">数据状态</div>
-                <button onclick="resetDatabase()" class="btn btn-danger mt-3" style="width: 100%;">重置数据</button>
-            </div>
-        </div>
-
-        <!-- 测试控制 -->
-        <div class="card mb-6">
-            <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 1.5rem; color: #1e293b;">🎯 测试执行</h3>
-            <div class="flex gap-3 mb-4">
-                <button onclick="startTest()" class="btn btn-success" id="startBtn">▶️ 开始测试（42个用例）</button>
-                <button onclick="pauseTest()" class="btn btn-warning" id="pauseBtn" disabled>⏸️ 暂停</button>
-                <button onclick="stopTest()" class="btn btn-danger" id="stopBtn" disabled>⏹️ 停止</button>
-                <div style="flex: 1;"></div>
-                <button onclick="clearLog()" class="btn" style="background: #f1f5f9; color: #475569;">🗑️ 清空日志</button>
-            </div>
-            <div style="background: #f8fafc; padding: 1rem; border-radius: 12px; margin-bottom: 1rem;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="color: #64748b; font-size: 0.875rem;">测试进度</span>
-                    <span style="font-weight: 700; color: #667eea;" id="progressText">0/42</span>
+                <!-- 数据管理 -->
+                <div class="card">
+                    <div class="control-section" style="margin: 0;">
+                        <h3>🗄️ 数据管理</h3>
+                        <button class="btn btn-danger" style="width: 100%;" onclick="resetDB()">🗑️ 重置数据库</button>
+                    </div>
                 </div>
-                <div style="width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; margin-top: 0.5rem; overflow: hidden;">
-                    <div id="progressBar" style="height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); width: 0%; transition: width 0.3s;"></div>
-                </div>
-            </div>
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
-                <div style="text-align: center;">
-                    <div style="color: #94a3b8; font-size: 0.875rem;">通过</div>
-                    <div style="font-size: 1.5rem; font-weight: 700; color: #10b981;" id="passCount">0</div>
-                </div>
-                <div style="text-align: center;">
-                    <div style="color: #94a3b8; font-size: 0.875rem;">失败</div>
-                    <div style="font-size: 1.5rem; font-weight: 700; color: #ef4444;" id="failCount">0</div>
-                </div>
-                <div style="text-align: center;">
-                    <div style="color: #94a3b8; font-size: 0.875rem;">当前时间</div>
-                    <div style="font-size: 1.125rem; font-weight: 700; color: #667eea; font-family: monospace;" id="currentTime">06:00:00</div>
-                </div>
-            </div>
-        </div>
 
-        <!-- 日志 -->
-        <div class="card">
-            <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 1.5rem; color: #1e293b;">📋 实时日志</h3>
-            <div id="logContainer" style="max-height: 400px; overflow-y: auto; background: #f8fafc; padding: 1rem; border-radius: 12px;">
-                <div class="log-info">等待开始测试...</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 故障模拟弹窗 -->
-    <div id="pileModal" class="modal">
-        <div class="modal-content">
-            <h3 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 1.5rem;">选择充电桩</h3>
-            <div id="pileList" style="display: grid; gap: 0.75rem; margin-bottom: 1.5rem;"></div>
-            <div style="display: flex; gap: 0.75rem;">
-                <button onclick="closeModal()" class="btn" style="flex: 1; background: #f1f5f9; color: #475569;">取消</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 时间流速弹窗 -->
-    <div id="timeModal" class="modal">
-        <div class="modal-content">
-            <h3 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 1.5rem;">调整时间流速</h3>
-            <div style="display: grid; gap: 0.75rem; margin-bottom: 1.5rem;">
-                <button onclick="setTimeScale('1:1')" class="btn btn-primary">1:1（实时）</button>
-                <button onclick="setTimeScale('1:10')" class="btn btn-primary">1:10（推荐）</button>
-                <button onclick="setTimeScale('1:60')" class="btn btn-primary">1:60（快速）</button>
-                <button onclick="setTimeScale('instant')" class="btn btn-primary">即时（测试）</button>
-            </div>
-            <button onclick="closeModal()" class="btn" style="width: 100%; background: #f1f5f9; color: #475569;">关闭</button>
-        </div>
-    </div>
-
-    <script>
-        const API = 'http://localhost:8080/api';
-        let testData = [];
-        let isRunning = false;
-        let currentIndex = 0;
-        let timeScaleValue = 10;
-
-        // 加载测试数据
-        fetch('test_cases.json').then(r => r.json()).then(d => { testData = d; addLog('✓ 加载了 ' + d.length + ' 个测试用例', 'success'); });
-
-        // 加载充电桩列表
-        async function loadPiles() {
-            try {
-                const r = await fetch(API + '/monitor/piles');
-                const data = await r.json();
-                if (data.success) {
-                    const piles = data.data;
-                    const html = piles.map(p => `
-                        <div class="pile-card ${p.status === 'FAULT' ? 'fault' : ''}" onclick="toggleFault('${p.pileId}', '${p.status}')">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <div>
-                                    <div style="font-weight: 700; font-size: 1.125rem;">${p.pileNo}</div>
-                                    <div style="font-size: 0.875rem; color: #64748b;">${p.pileType === 'FAST' ? '快充' : '慢充'} · ${p.ratedPower}kW</div>
-                                </div>
-                                <div style="font-size: 1.5rem;">${p.status === 'FAULT' ? '❌' : '✅'}</div>
+                <!-- 统计 -->
+                <div class="card">
+                    <div class="control-section" style="margin: 0;">
+                        <h3>📊 实时统计</h3>
+                        <div class="stat-grid">
+                            <div class="stat-item">
+                                <span>充电中</span>
+                                <span class="stat-value" id="statCharging">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span>等待中</span>
+                                <span class="stat-value" id="statWaiting">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span>故障桩</span>
+                                <span class="stat-value" id="statFault">0</span>
                             </div>
                         </div>
-                    `).join('');
-                    document.getElementById('pileList').innerHTML = html;
-                }
-            } catch (e) { addLog('✗ 加载充电桩失败', 'error'); }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="lib/sockjs.min.js"></script>
+    <script src="lib/stomp.min.js"></script>
+    <script>
+        const SRV_KEY = 'serverBase';
+        function serverBase() { return localStorage.getItem(SRV_KEY) || 'http://localhost:8080'; }
+        function applyServer() {
+            let v = (document.getElementById('serverAddr').value || '').trim();
+            if (v) { if (!/^https?:\/\//i.test(v)) v = 'http://' + v; localStorage.setItem(SRV_KEY, v.replace(/\/+$/, '')); }
+            else { localStorage.removeItem(SRV_KEY); }
+            location.reload();
         }
-
-        // 显示充电桩弹窗
-        async function showPileModal() {
-            await loadPiles();
-            document.getElementById('pileModal').classList.add('show');
-        }
-
-        // 切换故障状态
-        async function toggleFault(pileId, status) {
-            const isFault = status === 'FAULT';
-            const endpoint = isFault ? 'recover' : 'fault/priority';
-            const action = isFault ? '恢复' : '设为故障';
-
-            try {
-                const r = await fetch(`${API}/dispatch/${endpoint}?pileId=${pileId}`, { method: 'POST' });
-                const data = await r.json();
-                if (data.success) {
-                    addLog(`✓ ${pileId} 已${action}`, 'success');
-                    await loadPiles();
-                } else {
-                    addLog(`✗ ${action}失败: ${data.message}`, 'error');
-                }
-            } catch (e) { addLog(`✗ ${action}失败`, 'error'); }
-        }
-
-        // 重置数据库
-        async function resetDatabase() {
-            if (!confirm('⚠️ 确定要重置所有数据吗？\n\n这将：\n• 清空所有充电请求\n• 重置队列状态\n• 不影响车辆和充电桩配置\n\n此操作不可撤销！')) return;
-
-            addLog('开始重置数据库...', 'warning');
-            try {
-                const r = await fetch('/clean_data.sh');
-                addLog('✓ 数据库已重置', 'success');
-            } catch (e) {
-                addLog('使用MySQL直接清理...', 'info');
-            }
-        }
-
-        // 调整时间流速
-        function changeTimeScale() {
-            document.getElementById('timeModal').classList.add('show');
-        }
-
-        function setTimeScale(scale) {
-            document.getElementById('timeScale').textContent = scale;
-            timeScaleValue = scale === '1:1' ? 1 : scale === '1:10' ? 10 : scale === '1:60' ? 60 : 0;
-            addLog('时间流速设为 ' + scale, 'info');
-            closeModal();
-        }
-
-        function closeModal() {
-            document.querySelectorAll('.modal').forEach(m => m.classList.remove('show'));
-        }
-
-        // 开始测试
-        async function startTest() {
-            if (isRunning) return;
-            isRunning = true;
-            currentIndex = 0;
-            document.getElementById('startBtn').disabled = true;
-            document.getElementById('pauseBtn').disabled = false;
-            document.getElementById('stopBtn').disabled = false;
-
-            addLog('=== 开始测试 ===', 'info');
-            for (let i = 0; i < testData.length && isRunning; i++) {
-                currentIndex = i;
-                await runTest(testData[i], i + 1);
-                updateProgress(i + 1, testData.length);
-                await sleep(timeScaleValue === 0 ? 0 : 500);
-            }
-
-            if (isRunning) {
-                addLog('=== 测试完成 ===', 'success');
-                stopTest();
-            }
-        }
-
-        function pauseTest() { isRunning = false; addLog('测试已暂停', 'warning'); }
-        function stopTest() {
-            isRunning = false;
-            document.getElementById('startBtn').disabled = false;
-            document.getElementById('pauseBtn').disabled = true;
-            document.getElementById('stopBtn').disabled = true;
-        }
-
-        async function runTest(tc, idx) {
-            document.getElementById('currentTime').textContent = tc.time;
-
-            if (tc.action === 'A' && tc.mode !== 'O') {
-                try {
-                    const r = await fetch(API + '/charging/request', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            carId: tc.vehicle,
-                            requestAmount: parseFloat(tc.amount),
-                            requestMode: tc.mode === 'F' ? 'FAST' : 'TRICKLE'
-                        })
-                    });
-                    const data = await r.json();
-                    if (data.success) {
-                        addLog(`✓ [${tc.time}] ${tc.vehicle} 申请${tc.mode === 'F' ? '快充' : '慢充'}${tc.amount}度`, 'success');
-                        document.getElementById('passCount').textContent = parseInt(document.getElementById('passCount').textContent) + 1;
-                    } else {
-                        addLog(`✗ [${tc.time}] ${data.message}`, 'error');
-                        document.getElementById('failCount').textContent = parseInt(document.getElementById('failCount').textContent) + 1;
-                    }
-                } catch (e) {
-                    addLog(`✗ [${tc.time}] 网络错误`, 'error');
-                    document.getElementById('failCount').textContent = parseInt(document.getElementById('failCount').textContent) + 1;
-                }
-            }
-        }
-
-        function updateProgress(current, total) {
-            const percent = (current / total * 100).toFixed(0);
-            document.getElementById('progressBar').style.width = percent + '%';
-            document.getElementById('progressText').textContent = current + '/' + total;
-        }
-
-        function addLog(msg, type = 'info') {
-            const container = document.getElementById('logContainer');
-            const entry = document.createElement('div');
-            entry.className = 'log-entry log-' + type;
-            entry.textContent = new Date().toLocaleTimeString() + ' ' + msg;
-            container.appendChild(entry);
-            container.scrollTop = container.scrollHeight;
-        }
-
-        function clearLog() {
-            document.getElementById('logContainer').innerHTML = '<div class="log-info">日志已清空</div>';
-        }
-
-        function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-        // 点击模态框外部关闭
-        document.querySelectorAll('.modal').forEach(m => {
-            m.addEventListener('click', (e) => { if (e.target === m) closeModal(); });
+        window.addEventListener('DOMContentLoaded', () => {
+            const el = document.getElementById('serverAddr'); if (el) el.value = serverBase();
         });
+
+        const API = serverBase() + '/api';
+        let stompClient;
+
+        function connect() {
+            const socket = new SockJS(serverBase() + '/api/ws');
+            stompClient = Stomp.over(socket);
+            stompClient.connect({}, () => {
+                log('WebSocket 连接成功 ' + serverBase(), 'success');
+                const s = document.getElementById('srvState'); if (s) { s.textContent = '已连接 ' + serverBase(); s.style.color = '#86efac'; }
+                stompClient.subscribe('/topic/status', (msg) => {
+                    const data = JSON.parse(msg.body);
+                    updateUI(data);
+                });
+            }, () => {
+                log('WebSocket 连接失败 ' + serverBase(), 'error');
+                const s = document.getElementById('srvState'); if (s) { s.textContent = '连接失败：' + serverBase(); s.style.color = '#fca5a5'; }
+            });
+        }
+
+        function updateUI(data) {
+            if (!data?.piles) return;
+
+            const fast = document.getElementById('fastPiles');
+            const trickle = document.getElementById('tricklePiles');
+            fast.innerHTML = '';
+            trickle.innerHTML = '';
+
+            data.piles.forEach(p => {
+                const card = document.createElement('div');
+                const status = p.status === 'BUSY' ? 'charging' :
+                              p.status === 'FAULT' ? 'fault' : 'available';
+                const text = p.status === 'BUSY' ? '充电' :
+                            p.status === 'FAULT' ? '故障' : '空闲';
+
+                card.className = `pile-card ${status}`;
+                card.onclick = () => toggleFault(p.pileId, p.status);
+                card.innerHTML = `
+                    <div class="pile-header">
+                        <div class="pile-id">${p.pileId}</div>
+                        <div class="pile-status ${status}">${text}</div>
+                    </div>
+                    ${p.currentCarId ? `<div style="font-size: 0.875rem; color: rgba(255,255,255,0.7);">🚗 ${p.currentCarId}</div>` : ''}
+                `;
+
+                (p.pileType === 'FAST' ? fast : trickle).appendChild(card);
+            });
+
+            const charging = data.piles.filter(p => p.status === 'BUSY').length;
+            const fault = data.piles.filter(p => p.status === 'FAULT').length;
+            const waiting = data.piles.reduce((s, p) => s + (p.queueLength || 0), 0);
+
+            document.getElementById('statCharging').textContent = charging;
+            document.getElementById('statWaiting').textContent = waiting;
+            document.getElementById('statFault').textContent = fault;
+        }
+
+        async function setFault(pileId) {
+            const strategy = document.getElementById('faultStrategy').value;
+            try {
+                const response = await fetch(`${API}/dispatch/fault/${strategy}?pileId=${pileId}`, {
+                    method: 'POST'
+                });
+                const result = await response.text();
+                log(`${pileId} 故障调度完成（${strategy === 'priority' ? '优先级' : '时间顺序'}）`, 'warning');
+            } catch (e) {
+                log('操作失败: ' + e.message, 'error');
+            }
+        }
+
+        async function toggleFault(pileId, currentStatus) {
+            if (currentStatus === 'FAULT') {
+                // 恢复
+                try {
+                    await fetch(`${API}/dispatch/recover?pileId=${pileId}`, {
+                        method: 'POST'
+                    });
+                    log(`${pileId} 已恢复`, 'success');
+                } catch (e) {
+                    log('恢复失败', 'error');
+                }
+            } else {
+                // 设置故障
+                await setFault(pileId);
+            }
+        }
+
+        async function recoverAll() {
+            const piles = ['P_F1', 'P_F2', 'P_T1', 'P_T2', 'P_T3'];
+            for (const p of piles) {
+                try {
+                    await fetch(`${API}/dispatch/recover?pileId=${p}`, {
+                        method: 'POST'
+                    });
+                } catch (e) {}
+            }
+            log('所有充电桩已恢复', 'success');
+        }
+
+        async function resetDB() {
+            if (!confirm('确定重置数据库？')) return;
+            try {
+                await fetch(`${API}/monitor/reset`, {method: 'POST'});
+                log('数据库已重置', 'success');
+            } catch (e) {
+                log('重置失败', 'error');
+            }
+        }
+
+        document.getElementById('timeSlider').addEventListener('input', (e) => {
+            const labels = ['1x', '10x', '60x', '即时'];
+            const label = labels[e.target.value - 1];
+            document.getElementById('currentSpeed').textContent = label;
+            log(`时间流速调整为 ${label}`, 'info');
+        });
+
+        function log(msg, type = 'info') {
+            const container = document.getElementById('logContainer');
+            const time = new Date().toLocaleTimeString();
+            const line = document.createElement('div');
+            line.className = `log-line ${type}`;
+            line.textContent = `[${time}] ${msg}`;
+            container.insertBefore(line, container.firstChild);
+            if (container.children.length > 50) {
+                container.removeChild(container.lastChild);
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('logContainer').innerHTML = '';
+            log('日志已清空', 'info');
+        }
+
+        connect();
     </script>
 </body>
 </html>

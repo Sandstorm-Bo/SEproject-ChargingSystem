@@ -63,4 +63,18 @@ public class MonitorController {
             return Result.error(e.getMessage());
         }
     }
+
+    /**
+     * 重置数据库
+     * POST /api/monitor/reset
+     */
+    @PostMapping("/reset")
+    public Result<String> resetDatabase() {
+        try {
+            // 这里简单返回成功，实际重置由前端调用reset_db.sh
+            return Result.success("请使用 reset_db.sh 脚本重置数据库");
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
 }

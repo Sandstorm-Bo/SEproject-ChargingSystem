@@ -24,6 +24,11 @@ public interface PileMapper {
     List<ChargingPile> getAllChargingPiles();
 
     /**
+     * 查询所有充电桩（别名）
+     */
+    List<ChargingPile> selectAllPiles();
+
+    /**
      * 更新充电桩状态
      */
     void updatePileState(ChargingPile pile);

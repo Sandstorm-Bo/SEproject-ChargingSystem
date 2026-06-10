@@ -18,12 +18,13 @@ public class ChargingRequestDTO {
     private Double requestAmount;
 
     @NotNull(message = "充电模式不能为空")
-    private String requestMode;  // FAST 或 TRICKLE
+    private String requestMode;
 
-    // Constructors
+    @Positive(message = "电池容量必须大于0")
+    private Double batteryCapacity;
+
     public ChargingRequestDTO() {}
 
-    // Getters and Setters
     public String getCarId() {
         return carId;
     }
@@ -46,6 +47,14 @@ public class ChargingRequestDTO {
 
     public void setRequestMode(String requestMode) {
         this.requestMode = requestMode;
+    }
+
+    public Double getBatteryCapacity() {
+        return batteryCapacity;
+    }
+
+    public void setBatteryCapacity(Double batteryCapacity) {
+        this.batteryCapacity = batteryCapacity;
     }
 
     public RequestMode getRequestModeEnum() {

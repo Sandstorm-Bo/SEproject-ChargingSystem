@@ -4,14 +4,14 @@
 INSERT INTO charging_pile (pile_id, pile_no, pile_type, status, rated_power, queue_capacity_m, is_schedulable) VALUES
 ('P_F1', 'F1', 'FAST', 'IDLE', 30.0, 2, TRUE),
 ('P_F2', 'F2', 'FAST', 'IDLE', 30.0, 2, TRUE),
-('P_T1', 'T1', 'TRICKLE', 'IDLE', 7.0, 2, TRUE),
-('P_T2', 'T2', 'TRICKLE', 'IDLE', 7.0, 2, TRUE),
-('P_T3', 'T3', 'TRICKLE', 'IDLE', 7.0, 2, TRUE);
+('P_T1', 'T1', 'TRICKLE', 'IDLE', 10.0, 2, TRUE),
+('P_T2', 'T2', 'TRICKLE', 'IDLE', 10.0, 2, TRUE),
+('P_T3', 'T3', 'TRICKLE', 'IDLE', 10.0, 2, TRUE);
 
 -- 插入等候区队列
 INSERT INTO waiting_queue (queue_id, queue_type, queue_length, max_capacity) VALUES
-('WQ_FAST', 'FAST', 0, 12),
-('WQ_TRICKLE', 'TRICKLE', 0, 12);
+('WQ_FAST', 'FAST', 0, 10),
+('WQ_TRICKLE', 'TRICKLE', 0, 10);
 
 -- 插入充电桩前队列
 INSERT INTO charging_queue (queue_id, pile_id, queue_len_m, current_length) VALUES

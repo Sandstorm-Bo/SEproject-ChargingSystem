@@ -33,6 +33,12 @@
         ORDER BY pile_no
     </select>
 
+    <!-- 查询所有充电桩（别名） -->
+    <select id="selectAllPiles" resultMap="ChargingPileResultMap">
+        SELECT * FROM charging_pile
+        ORDER BY pile_no
+    </select>
+
     <!-- 更新充电桩状态 -->
     <update id="updatePileState">
         UPDATE charging_pile

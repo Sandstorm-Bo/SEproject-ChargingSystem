@@ -2,6 +2,9 @@
 -- 根据设计文档数据库设计
 
 -- 删除已存在的表
+DROP TABLE IF EXISTS dispatch_record;
+DROP TABLE IF EXISTS fault_record;
+DROP TABLE IF EXISTS queue_item;
 DROP TABLE IF EXISTS detailed_list;
 DROP TABLE IF EXISTS bill;
 DROP TABLE IF EXISTS charging_session;
@@ -151,3 +154,27 @@ CREATE TABLE tariff_policy (
     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='计费策略表';
+
+-- 10. 故障记录表（充电桩故障与恢复审计）
+CREATE TABLE fault_record (
+    fault_id VARCHAR(50) PRIMARY KEY COMMENT '故障记录编号',
+    pile_id VARCHAR(50) NOT NULL COMMENT '充电桩编号',
+    strategy VARCHAR(20) COMMENT '调度策略 PRIORITY/TIME_ORDER',
+    fault_reason VARCHAR(200) COMMENT '故障原因',
+    occurred_at TIMESTAMP NULL COMMENT '故障发生时间',
+    recovered_at TIMESTAMP NULL COMMENT '恢复时间',
+    status VARCHAR(20) DEFAULT 'OPEN' COMMENT 'OPEN/RECOVERED',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_pile (pile_id),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='故障记录表';
+
+-- 11. 调度记录表（调度操作审计）
+CREATE TABLE dispatch_record (
+    dispatch_id VARCHAR(50) PRIMARY KEY COMMENT '调度记录编号',
+    dispatch_type VARCHAR(40) NOT NULL COMMENT '调度类型',
+    detail VARCHAR(1000) COMMENT '调度方案摘要',
+    car_count INT DEFAULT 0 COMMENT '涉及车辆数',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_type (dispatch_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='调度记录表';

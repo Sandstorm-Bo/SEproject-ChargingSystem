@@ -40,6 +40,11 @@ public interface QueueMapper {
     List<ChargingQueue> getAllChargingQueuesWithRequests();
 
     /**
+     * 按类型查询队列
+     */
+    List<ChargingQueue> selectQueueByType(@Param("queueType") String queueType);
+
+    /**
      * 查询当前计费策略
      */
     TariffPolicy getCurrentTariffPolicy();

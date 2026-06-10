@@ -122,26 +122,36 @@ public class ChargingSession {
     }
 
     /**
-     * 计算实时充电量（基于功率和时长）
+     * 演示用时间加速因子：1 真实秒 = TIME_ACCELERATION 模拟秒。
+     * 取 120 时，一辆快充充满 30 度（30kW 需 1 模拟小时）约 30 真实秒完成。
      */
-    public Double calculateCurrentAmount(Double powerKw, LocalDateTime currentTime) {
+    public static double TIME_ACCELERATION = 120.0;
+
+    /** 自开始充电以来经过的“模拟小时数” */
+    private double simulatedHours(LocalDateTime currentTime) {
         if (startTime == null || currentTime == null) {
             return 0.0;
         }
-        long minutes = java.time.Duration.between(startTime, currentTime).toMinutes();
-        double hours = minutes / 60.0;
-        double charged = powerKw * hours;
+        double realSeconds = java.time.Duration.between(startTime, currentTime).toMillis() / 1000.0;
+        return realSeconds * TIME_ACCELERATION / 3600.0;
+    }
+
+    /**
+     * 计算实时充电量（基于功率和加速后的时长，封顶为请求量）
+     */
+    public Double calculateCurrentAmount(Double powerKw, LocalDateTime currentTime) {
+        if (powerKw == null) {
+            return 0.0;
+        }
+        double charged = powerKw * simulatedHours(currentTime);
         return Math.min(charged, requestAmount);
     }
 
     /**
-     * 计算实时充电时长
+     * 计算实时充电时长（模拟分钟）
      */
     public Double calculateCurrentDuration(LocalDateTime currentTime) {
-        if (startTime == null || currentTime == null) {
-            return 0.0;
-        }
-        return (double) java.time.Duration.between(startTime, currentTime).toMinutes();
+        return simulatedHours(currentTime) * 60.0;
     }
 
     /**

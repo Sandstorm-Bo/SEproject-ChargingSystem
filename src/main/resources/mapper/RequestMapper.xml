@@ -68,4 +68,46 @@
         WHERE request_id = #{requestId}
     </update>
 
+    <!-- 查询所有车辆 -->
+    <select id="selectAllVehicles" resultType="com.charging.station.domain.Vehicle">
+        SELECT vehicle_id as vehicleId,
+               plate_number as plateNumber,
+               vehicle_type as vehicleType,
+               battery_capacity as batteryCapacity
+        FROM vehicle
+        ORDER BY vehicle_id
+    </select>
+
+    <!-- 插入车辆（如果不存在） -->
+    <insert id="insertVehicleIfNotExists">
+        INSERT IGNORE INTO vehicle (vehicle_id, plate_number, vehicle_type, battery_capacity)
+        VALUES (#{vehicleId}, #{plateNumber}, #{vehicleType}, #{batteryCapacity})
+    </insert>
+
+    <!-- 同步车辆当前状态 -->
+    <update id="updateVehicleState">
+        UPDATE vehicle SET car_state = #{carState} WHERE vehicle_id = #{carId}
+    </update>
+
+    <!-- 根据充电桩ID查询所有排队和充电中的请求 -->
+    <select id="getRequestsByPileId" resultMap="ChargingRequestResultMap">
+        SELECT * FROM charging_request
+        WHERE pile_id = #{pileId}
+          AND request_status IN ('QUEUED_AT_PILE', 'CALLED', 'CHARGING')
+        ORDER BY queue_position ASC
+    </select>
+
+    <!-- 查询等候区中的车辆 -->
+    <select id="getWaitingRequests" resultMap="ChargingRequestResultMap">
+        SELECT * FROM charging_request
+        WHERE request_mode = #{requestMode}
+          AND request_status = 'WAITING'
+        ORDER BY request_time ASC
+    </select>
+
+    <!-- 查询车辆电池总容量 -->
+    <select id="getVehicleCapacity" resultType="java.lang.Double">
+        SELECT battery_capacity FROM vehicle WHERE vehicle_id = #{carId}
+    </select>
+
 </mapper>

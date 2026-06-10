@@ -1,6 +1,8 @@
 package com.charging.station.controller;
 
+import com.charging.station.domain.DispatchPlan;
 import com.charging.station.dto.Result;
+import com.charging.station.enums.RequestMode;
 import com.charging.station.service.DispatchService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -55,6 +57,36 @@ public class DispatchController {
         try {
             String result = dispatchService.recoverPileAndRedispatch(pileId);
             return Result.success(result);
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 2.8 扩展调度：单次最短总完成时长调度
+     * POST /api/dispatch/batch/single?mode=FAST&emptySlots=2
+     */
+    @PostMapping("/batch/single")
+    public Result<DispatchPlan> batchSingle(@RequestParam String mode,
+                                            @RequestParam(defaultValue = "2") int emptySlots) {
+        try {
+            DispatchPlan plan = dispatchService.dispatchSingleBatchMinTotalDuration(
+                    RequestMode.fromString(mode), emptySlots);
+            return Result.success("单次最短总时长调度完成", plan);
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 2.8 扩展调度：全站最短总完成时长批量调度
+     * POST /api/dispatch/batch/full
+     */
+    @PostMapping("/batch/full")
+    public Result<DispatchPlan> batchFull() {
+        try {
+            DispatchPlan plan = dispatchService.dispatchFullStationBatchMinTotalDuration();
+            return Result.success("全站最短总时长调度完成", plan);
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }

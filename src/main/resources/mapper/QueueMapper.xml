@@ -36,6 +36,15 @@
         ORDER BY pile_id
     </select>
 
+    <!-- 按桩类型查询桩排队区（queueType 传 FAST / TRICKLE） -->
+    <select id="selectQueueByType" resultType="com.charging.station.domain.ChargingQueue">
+        SELECT cq.*
+        FROM charging_queue cq
+        JOIN charging_pile cp ON cp.pile_id = cq.pile_id
+        WHERE cp.pile_type = #{queueType}
+        ORDER BY cq.pile_id
+    </select>
+
     <!-- 查询当前计费策略 -->
     <select id="getCurrentTariffPolicy" resultType="com.charging.station.domain.TariffPolicy">
         SELECT * FROM tariff_policy

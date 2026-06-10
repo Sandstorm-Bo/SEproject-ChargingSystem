@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.charging.station.mapper.FaultMapper">
+
+    <insert id="insertFaultRecord">
+        INSERT INTO fault_record (fault_id, pile_id, strategy, fault_reason, occurred_at, status)
+        VALUES (#{faultId}, #{pileId}, #{strategy}, #{faultReason}, #{occurredAt}, #{status})
+    </insert>
+
+    <update id="markRecovered">
+        UPDATE fault_record
+        SET status = 'RECOVERED', recovered_at = #{recoveredAt}
+        WHERE pile_id = #{pileId} AND status = 'OPEN'
+    </update>
+
+    <select id="getAllFaultRecords" resultType="com.charging.station.domain.FaultRecord">
+        SELECT * FROM fault_record ORDER BY occurred_at DESC
+    </select>
+
+</mapper>

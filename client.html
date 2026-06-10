@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>用户端 - 充电桩系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        .container { max-width: 800px; margin: 0 auto; }
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 2rem;
+        }
+        .header h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            margin-bottom: 2rem;
+        }
+        h2 { margin-bottom: 1.5rem; color: #1e293b; }
+        .form-group { margin-bottom: 1.5rem; }
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #1e293b;
+        }
+        .input {
+            width: 100%;
+            padding: 1rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 1rem;
+        }
+        .input:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+        .mode-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .mode-btn {
+            padding: 2rem;
+            border: 4px solid #e2e8f0;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            background: white;
+        }
+        .mode-btn:hover { border-color: #6366f1; }
+        .mode-btn.selected {
+            border-color: #6366f1;
+            background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+        }
+        .mode-icon { font-size: 3rem; margin-bottom: 0.5rem; }
+        .mode-label { font-size: 1.125rem; font-weight: 700; }
+        .btn {
+            width: 100%;
+            padding: 1rem;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 0.5rem;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(99,102,241,0.3);
+        }
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        .status-banner {
+            padding: 1.5rem;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        .status-banner.idle {
+            background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+            border: 2px solid #3b82f6;
+            color: #1e40af;
+        }
+        .status-banner.waiting {
+            background: linear-gradient(135deg, #fffbeb, #fef3c7);
+            border: 2px solid #f59e0b;
+            color: #92400e;
+        }
+        .status-banner.charging {
+            background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+            border: 2px solid #10b981;
+            color: #065f46;
+        }
+        .toast {
+            position: fixed;
+            top: 2rem;
+            right: 2rem;
+            background: white;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            z-index: 1000;
+            display: none;
+        }
+        .toast.show { display: block; animation: slideIn 0.3s; }
+        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        .toast.success { border-left: 4px solid #10b981; }
+        .toast.error { border-left: 4px solid #ef4444; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="srvBar" style="margin-bottom:1rem;padding:.6rem 1rem;background:rgba(0,0,0,.28);border-radius:10px;display:flex;gap:.5rem;align-items:center;font-size:.85rem;color:#fff;flex-wrap:wrap;">
+            <span>🌐 服务器地址</span>
+            <input id="serverAddr" placeholder="如 192.168.1.10:8080 或 http://host:8080" style="flex:1;min-width:200px;padding:.45rem .6rem;border-radius:8px;border:1px solid #cbd5e1;color:#1e293b;">
+            <button onclick="applyServer()" style="padding:.45rem 1.1rem;border:none;border-radius:8px;background:#6366f1;color:#fff;font-weight:700;cursor:pointer;">连接</button>
+        </div>
+        <div class="header">
+            <h1>🚗 充电桩用户端</h1>
+            <p>输入车牌号即可申请充电</p>
+        </div>
+
+        <div id="statusBanner" class="status-banner idle">
+            <h2 style="margin: 0 0 0.5rem 0; color: inherit;">💤 未申请充电</h2>
+            <p style="margin: 0;">请输入车牌号并提交充电申请</p>
+        </div>
+
+        <div class="card">
+            <h2>⚡ 充电申请</h2>
+
+            <div class="form-group">
+                <label class="form-label">车牌号</label>
+                <input type="text" class="input" id="plateNumber" placeholder="例如: 京A12345" maxlength="20">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">电池容量（度）</label>
+                <input type="number" class="input" id="batteryCapacity" placeholder="例如: 60" min="10" max="200" value="60">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">充电模式</label>
+                <div class="mode-grid">
+                    <div class="mode-btn selected" id="fastMode" onclick="selectMode('F')">
+                        <div class="mode-icon">⚡</div>
+                        <div class="mode-label">快充</div>
+                    </div>
+                    <div class="mode-btn" id="trickleMode" onclick="selectMode('T')">
+                        <div class="mode-icon">🔌</div>
+                        <div class="mode-label">慢充</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">充电量（度）</label>
+                <input type="number" class="input" id="chargeAmount" placeholder="请输入充电量" min="1" max="200" value="30">
+            </div>
+
+            <button class="btn btn-primary" onclick="submitRequest()">⚡ 提交充电申请</button>
+            <button class="btn btn-primary" onclick="modifyAmount()" style="background: linear-gradient(135deg, #f59e0b, #d97706);">🔧 修改充电量</button>
+            <button class="btn btn-danger" onclick="cancelRequest()">❌ 取消充电</button>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const SRV_KEY = 'serverBase';
+        function serverBase() { return localStorage.getItem(SRV_KEY) || 'http://localhost:8080'; }
+        function applyServer() {
+            let v = (document.getElementById('serverAddr').value || '').trim();
+            if (v) { if (!/^https?:\/\//i.test(v)) v = 'http://' + v; localStorage.setItem(SRV_KEY, v.replace(/\/+$/, '')); }
+            else { localStorage.removeItem(SRV_KEY); }
+            location.reload();
+        }
+        window.addEventListener('DOMContentLoaded', () => {
+            const el = document.getElementById('serverAddr'); if (el) el.value = serverBase();
+        });
+
+        const API = serverBase() + '/api';
+        let selectedMode = 'F';
+        let myPlateNumber = null;
+
+        function selectMode(mode) {
+            selectedMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('selected'));
+            document.getElementById(mode === 'F' ? 'fastMode' : 'trickleMode').classList.add('selected');
+        }
+
+        async function submitRequest() {
+            const plateNumber = document.getElementById('plateNumber').value.trim();
+            if (!plateNumber) {
+                showToast('请输入车牌号', 'error');
+                return;
+            }
+
+            const batteryCapacity = parseFloat(document.getElementById('batteryCapacity').value);
+            if (!batteryCapacity || batteryCapacity <= 0) {
+                showToast('请输入有效的电池容量', 'error');
+                return;
+            }
+
+            const amount = parseFloat(document.getElementById('chargeAmount').value);
+            if (!amount || amount <= 0) {
+                showToast('请输入有效的充电量', 'error');
+                return;
+            }
+
+            if (amount > batteryCapacity) {
+                showToast('充电量不能超过电池容量', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API}/charging/request`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        carId: plateNumber,
+                        batteryCapacity: batteryCapacity,
+                        requestMode: selectedMode,
+                        requestAmount: amount
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    showToast('充电申请已提交', 'success');
+                    myPlateNumber = plateNumber;
+                    updateStatus('waiting');
+                    // 开始定时查询状态
+                    startPollingStatus();
+                } else {
+                    showToast(result.message || '申请失败', 'error');
+                }
+            } catch (e) {
+                showToast('提交失败', 'error');
+            }
+        }
+
+        async function cancelRequest() {
+            const plateNumber = document.getElementById('plateNumber').value.trim();
+            if (!plateNumber) {
+                showToast('请输入车牌号', 'error');
+                return;
+            }
+
+            if (!confirm('确定取消充电？')) {
+                return;
+            }
+
+            try {
+                // 查询车辆状态
+                const statusResponse = await fetch(`${API}/charging/car/${plateNumber}`);
+                const statusResult = await statusResponse.json();
+
+                if (!statusResult.success || !statusResult.data) {
+                    showToast('未找到充电记录', 'error');
+                    return;
+                }
+
+                const status = statusResult.data.requestStatus;
+
+                // 排队中或等待中：调用取消接口
+                if (status === 'WAITING' || status === 'QUEUED_AT_PILE') {
+                    const response = await fetch(`${API}/charging/cancel`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({carId: plateNumber})
+                    });
+
+                    const result = await response.json();
+                    if (result.success) {
+                        showToast('已取消充电', 'success');
+                        updateStatus('idle');
+                        myPlateNumber = null;
+                        if (statusPollingInterval) {
+                            clearInterval(statusPollingInterval);
+                        }
+                    } else {
+                        showToast(result.message || '取消失败', 'error');
+                    }
+                } else if (status === 'CHARGING') {
+                    // 正在充电：调用结束接口
+                    const pileId = statusResult.data.pileId || '';
+                    const response = await fetch(`${API}/charging/end?carId=${plateNumber}&pileId=${pileId}`, {
+                        method: 'POST'
+                    });
+
+                    const result = await response.json();
+                    if (result.success) {
+                        showToast('充电已结束，账单已生成', 'success');
+                        updateStatus('idle');
+                        myPlateNumber = null;
+                        if (statusPollingInterval) {
+                            clearInterval(statusPollingInterval);
+                        }
+                        // 显示账单信息
+                        if (result.data) {
+                            const b = result.data;
+                            alert(`账单详情：\n充电费用：${b.totalChargeFee}元\n服务费：${b.totalServiceFee}元\n总费用：${b.totalFee}元`);
+                        }
+                    } else {
+                        showToast(result.message || '取消失败', 'error');
+                    }
+                } else {
+                    showToast('当前状态无法取消', 'error');
+                }
+            } catch (e) {
+                showToast('操作失败：' + e.message, 'error');
+            }
+        }
+
+        async function modifyAmount() {
+            const plateNumber = document.getElementById('plateNumber').value.trim();
+            if (!plateNumber) {
+                showToast('请输入车牌号', 'error');
+                return;
+            }
+
+            const amount = parseFloat(document.getElementById('chargeAmount').value);
+            if (!amount || amount <= 0) {
+                showToast('请输入有效的充电量', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API}/charging/amount`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        carId: plateNumber,
+                        amount: amount
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    showToast('充电量修改成功', 'success');
+                } else {
+                    showToast(result.message || '修改失败', 'error');
+                }
+            } catch (e) {
+                showToast('修改失败', 'error');
+            }
+        }
+
+        function updateStatus(status) {
+            const banner = document.getElementById('statusBanner');
+            banner.className = `status-banner ${status}`;
+
+            if (status === 'idle') {
+                banner.innerHTML = '<h2 style="margin: 0 0 0.5rem 0; color: inherit;">💤 未申请充电</h2><p style="margin: 0;">请输入车牌号并提交充电申请</p>';
+            } else if (status === 'waiting') {
+                banner.innerHTML = `<h2 style="margin: 0 0 0.5rem 0; color: inherit;">⏱️ 排队中</h2><p style="margin: 0;">车辆 ${myPlateNumber} 正在等待充电桩分配</p>`;
+            } else if (status === 'charging') {
+                banner.innerHTML = `<h2 style="margin: 0 0 0.5rem 0; color: inherit;">⚡ 充电中</h2><p style="margin: 0;">车辆 ${myPlateNumber} 正在充电</p>`;
+            }
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} show`;
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        // 定时查询车辆状态
+        let statusPollingInterval = null;
+
+        function startPollingStatus() {
+            if (statusPollingInterval) {
+                clearInterval(statusPollingInterval);
+            }
+            statusPollingInterval = setInterval(async () => {
+                if (!myPlateNumber) {
+                    clearInterval(statusPollingInterval);
+                    return;
+                }
+                try {
+                    const response = await fetch(`${API}/charging/car/${myPlateNumber}`);
+                    const result = await response.json();
+                    if (result.success && result.data) {
+                        const status = result.data.requestStatus;
+                        const pileId = result.data.pileId;
+
+                        if (status === 'QUEUED_AT_PILE' && pileId) {
+                            const banner = document.getElementById('statusBanner');
+                            banner.className = 'status-banner charging';
+                            banner.innerHTML = `<h2 style="margin: 0 0 0.5rem 0; color: inherit;">✅ 已分配充电桩</h2><p style="margin: 0;">车辆 ${myPlateNumber} 已分配到 ${pileId}</p>`;
+                        } else if (status === 'CHARGING' && pileId) {
+                            const banner = document.getElementById('statusBanner');
+                            banner.className = 'status-banner charging';
+                            banner.innerHTML = `<h2 style="margin: 0 0 0.5rem 0; color: inherit;">⚡ 充电中</h2><p style="margin: 0;">车辆 ${myPlateNumber} 正在 ${pileId} 充电</p>`;
+                        } else if (status === 'WAITING') {
+                            updateStatus('waiting');
+                        }
+                    }
+                } catch (e) {
+                    console.error('查询状态失败', e);
+                }
+            }, 2000); // 每2秒查询一次
+        }
+
+        selectMode('F');
+    </script>
+</body>
+</html>

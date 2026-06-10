@@ -19,12 +19,14 @@ public class TariffPolicy {
     private Double valleyPrice;             // 谷时电价（元/度）
 
     // 时段配置（默认）
-    private LocalTime peakStartTime = LocalTime.of(10, 0);      // 峰时开始 10:00
-    private LocalTime peakEndTime = LocalTime.of(15, 0);        // 峰时结束 15:00
+    private LocalTime peakStartTime1 = LocalTime.of(10, 0);     // 峰时开始1 10:00
+    private LocalTime peakEndTime1 = LocalTime.of(15, 0);       // 峰时结束1 15:00
+    private LocalTime peakStartTime2 = LocalTime.of(18, 0);     // 峰时开始2 18:00
+    private LocalTime peakEndTime2 = LocalTime.of(21, 0);       // 峰时结束2 21:00
     private LocalTime flatStartTime1 = LocalTime.of(7, 0);      // 平时开始1 07:00
     private LocalTime flatEndTime1 = LocalTime.of(10, 0);       // 平时结束1 10:00
     private LocalTime flatStartTime2 = LocalTime.of(15, 0);     // 平时开始2 15:00
-    private LocalTime flatEndTime2 = LocalTime.of(21, 0);       // 平时结束2 21:00
+    private LocalTime flatEndTime2 = LocalTime.of(18, 0);       // 平时结束2 18:00
     // 谷时：21:00-07:00（其他时间）
 
     // 服务费单价
@@ -83,19 +85,19 @@ public class TariffPolicy {
     }
 
     public LocalTime getPeakStartTime() {
-        return peakStartTime;
+        return peakStartTime1;
     }
 
     public void setPeakStartTime(LocalTime peakStartTime) {
-        this.peakStartTime = peakStartTime;
+        this.peakStartTime1 = peakStartTime;
     }
 
     public LocalTime getPeakEndTime() {
-        return peakEndTime;
+        return peakEndTime1;
     }
 
     public void setPeakEndTime(LocalTime peakEndTime) {
-        this.peakEndTime = peakEndTime;
+        this.peakEndTime1 = peakEndTime;
     }
 
     public LocalTime getFlatStartTime1() {
@@ -140,34 +142,114 @@ public class TariffPolicy {
 
     /**
      * 根据时间判断当前时段的电价
+     * 峰时 [10:00,15:00) ∪ [18:00,21:00)
+     * 平时 [07:00,10:00) ∪ [15:00,18:00) ∪ [21:00,23:00)
+     * 谷时 [23:00,24:00) ∪ [00:00,07:00)
+     * 采用左闭右开区间，避免整点边界被漏判成谷时。
      */
     public Double getPriceByTime(LocalTime time) {
         if (time == null) {
             time = LocalTime.now();
         }
+        int s = time.toSecondOfDay();
 
         // 峰时
-        if (time.isAfter(peakStartTime) && time.isBefore(peakEndTime)) {
+        if (inRange(s, 10, 15) || inRange(s, 18, 21)) {
             return peakPrice;
         }
 
-        // 平时
-        if ((time.isAfter(flatStartTime1) && time.isBefore(flatEndTime1)) ||
-            (time.isAfter(flatStartTime2) && time.isBefore(flatEndTime2))) {
+        // 平时（含此前漏掉的 21:00-23:00）
+        if (inRange(s, 7, 10) || inRange(s, 15, 18) || inRange(s, 21, 23)) {
             return flatPrice;
         }
 
-        // 谷时（其他时间）
+        // 谷时（其余时间）
         return valleyPrice;
     }
 
+    /** 判断秒数 s 是否落在 [startHour:00, endHour:00) */
+    private static boolean inRange(int s, int startHour, int endHour) {
+        return s >= startHour * 3600 && s < endHour * 3600;
+    }
+
     /**
-     * 计算充电费用（按时段加权平均）
-     * 简化版：假设整个充电时段使用同一电价
+     * 计算充电费用（支持跨时段分段计费）
+     */
+    public Double calculateChargeFee(Double amount, LocalTime startTime, Double chargePower) {
+        if (chargePower == null || chargePower == 0) {
+            // 降级：使用起始时间单一电价
+            return amount * getPriceByTime(startTime);
+        }
+
+        // 计算充电总时长（小时）
+        double totalHours = amount / chargePower;
+
+        // 分段计算
+        double totalFee = 0.0;
+        double remainingHours = totalHours;
+        LocalTime currentTime = startTime;
+
+        while (remainingHours > 0.001) { // 精度控制
+            // 获取当前时段电价
+            Double currentPrice = getPriceByTime(currentTime);
+
+            // 计算到下一个时段边界的时间
+            LocalTime nextBoundary = getNextBoundary(currentTime);
+            double hoursToNextBoundary = calculateHoursToNext(currentTime, nextBoundary);
+
+            // 本时段实际充电时长
+            double hoursInThisPeriod = Math.min(remainingHours, hoursToNextBoundary);
+
+            // 本时段充电量
+            double amountInThisPeriod = hoursInThisPeriod * chargePower;
+
+            // 本时段费用
+            totalFee += amountInThisPeriod * currentPrice;
+
+            // 更新剩余时间和当前时间
+            remainingHours -= hoursInThisPeriod;
+            currentTime = nextBoundary;
+        }
+
+        return totalFee;
+    }
+
+    /**
+     * 获取下一个时段边界
+     */
+    private LocalTime getNextBoundary(LocalTime current) {
+        // 所有时段边界：7:00, 10:00, 15:00, 18:00, 21:00, 23:00
+        int[] hours = {7, 10, 15, 18, 21, 23};
+        int s = current.toSecondOfDay();
+
+        for (int h : hours) {
+            if (s < h * 3600) {
+                return LocalTime.of(h, 0);
+            }
+        }
+
+        // 已过当日最后边界（23:00），下一个边界是次日 7:00
+        return LocalTime.of(7, 0);
+    }
+
+    /**
+     * 计算到下一个时间点的小时数
+     */
+    private double calculateHoursToNext(LocalTime from, LocalTime to) {
+        if (to.isAfter(from)) {
+            return (to.toSecondOfDay() - from.toSecondOfDay()) / 3600.0;
+        } else {
+            // 跨天
+            return (86400 - from.toSecondOfDay() + to.toSecondOfDay()) / 3600.0;
+        }
+    }
+
+    /**
+     * 计算充电费用（简化版，保持向后兼容）
      */
     public Double calculateChargeFee(Double amount, LocalTime startTime) {
-        Double pricePerKwh = getPriceByTime(startTime);
-        return amount * pricePerKwh;
+        // 使用起始时间单一电价（向后兼容）
+        return amount * getPriceByTime(startTime);
     }
 
     /**

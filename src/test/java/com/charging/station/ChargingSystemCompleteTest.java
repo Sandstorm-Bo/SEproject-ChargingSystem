@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @Transactional
+@org.springframework.test.context.TestPropertySource(properties = "charging.scheduler.enabled=false")
 public class ChargingSystemCompleteTest {
 
     @Autowired

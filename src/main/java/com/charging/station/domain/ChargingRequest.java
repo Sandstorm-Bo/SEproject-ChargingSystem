@@ -22,6 +22,7 @@ public class ChargingRequest {
     // 关联属性
     private String pileId;              // 分配的充电桩编号（进入充电桩队列后）
     private Integer queuePosition;      // 在充电桩队列中的位置
+    private Integer carsBeforeCount;    // 前方等待车辆数（查询时计算，不持久化）
 
     // Constructors
     public ChargingRequest() {}
@@ -99,6 +100,14 @@ public class ChargingRequest {
         this.queuePosition = queuePosition;
     }
 
+    public Integer getCarsBeforeCount() {
+        return carsBeforeCount;
+    }
+
+    public void setCarsBeforeCount(Integer carsBeforeCount) {
+        this.carsBeforeCount = carsBeforeCount;
+    }
+
     // 业务方法
 
     /**
@@ -109,8 +118,8 @@ public class ChargingRequest {
         if (this.requestStatus != CarState.WAITING) {
             throw new IllegalStateException("只有在等候区的车辆才能修改充电量");
         }
-        if (amount == null || amount <= 0 || amount > 100) {
-            throw new IllegalArgumentException("充电量必须在 0 到 100 度之间");
+        if (amount == null || amount <= 0) {
+            throw new IllegalArgumentException("充电量必须大于 0");
         }
         this.requestAmount = amount;
     }
@@ -143,6 +152,20 @@ public class ChargingRequest {
      */
     public void markFinished() {
         this.requestStatus = CarState.FINISHED;
+    }
+
+    /**
+     * 标记为已取消
+     */
+    public void markCancelled() {
+        this.requestStatus = CarState.CANCELLED;
+    }
+
+    /**
+     * 标记为已叫号（到达充电桩队首、准备开始充电的中间态）
+     */
+    public void markCalled() {
+        this.requestStatus = CarState.CALLED;
     }
 
     /**
