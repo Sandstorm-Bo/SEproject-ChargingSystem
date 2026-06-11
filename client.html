@@ -1,429 +1,347 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <title>用户端 - 充电桩系统</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: system-ui, -apple-system, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 2rem;
-        }
-        .container { max-width: 800px; margin: 0 auto; }
-        .header {
-            text-align: center;
-            color: white;
-            margin-bottom: 2rem;
-        }
-        .header h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
-        .card {
-            background: white;
-            border-radius: 20px;
-            padding: 2rem;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            margin-bottom: 2rem;
-        }
-        h2 { margin-bottom: 1.5rem; color: #1e293b; }
-        .form-group { margin-bottom: 1.5rem; }
-        .form-label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-            color: #1e293b;
-        }
-        .input {
-            width: 100%;
-            padding: 1rem;
-            border: 2px solid #e2e8f0;
-            border-radius: 12px;
-            font-size: 1rem;
-        }
-        .input:focus {
-            outline: none;
-            border-color: #6366f1;
-            box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
-        }
-        .mode-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
-        .mode-btn {
-            padding: 2rem;
-            border: 4px solid #e2e8f0;
-            border-radius: 12px;
-            cursor: pointer;
-            transition: all 0.2s;
-            text-align: center;
-            background: white;
-        }
-        .mode-btn:hover { border-color: #6366f1; }
-        .mode-btn.selected {
-            border-color: #6366f1;
-            background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
-        }
-        .mode-icon { font-size: 3rem; margin-bottom: 0.5rem; }
-        .mode-label { font-size: 1.125rem; font-weight: 700; }
-        .btn {
-            width: 100%;
-            padding: 1rem;
-            border: none;
-            border-radius: 12px;
-            font-size: 1rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.2s;
-            margin-bottom: 0.5rem;
-        }
-        .btn-primary {
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            color: white;
-        }
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(99,102,241,0.3);
-        }
-        .btn-danger {
-            background: #ef4444;
-            color: white;
-        }
-        .status-banner {
-            padding: 1.5rem;
-            border-radius: 12px;
-            text-align: center;
-            margin-bottom: 1.5rem;
-        }
-        .status-banner.idle {
-            background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
-            border: 2px solid #3b82f6;
-            color: #1e40af;
-        }
-        .status-banner.waiting {
-            background: linear-gradient(135deg, #fffbeb, #fef3c7);
-            border: 2px solid #f59e0b;
-            color: #92400e;
-        }
-        .status-banner.charging {
-            background: linear-gradient(135deg, #f0fdf4, #dcfce7);
-            border: 2px solid #10b981;
-            color: #065f46;
-        }
-        .toast {
-            position: fixed;
-            top: 2rem;
-            right: 2rem;
-            background: white;
-            padding: 1rem 1.5rem;
-            border-radius: 12px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
-            z-index: 1000;
-            display: none;
-        }
-        .toast.show { display: block; animation: slideIn 0.3s; }
-        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
-        .toast.success { border-left: 4px solid #10b981; }
-        .toast.error { border-left: 4px solid #ef4444; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>用户端 · 智能充电桩调度计费系统</title>
+  <link rel="stylesheet" href="app.css">
+  <style>
+    .client-wrap{ max-width:1080px; margin:0 auto; padding:26px 22px 60px; display:flex; flex-direction:column; gap:22px; }
+    .client-head{ display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+    .two{ display:grid; grid-template-columns:1.05fr .95fr; gap:22px; align-items:start; }
+    .hero-state{ display:flex; align-items:center; gap:22px; }
+    .hero-ic{ width:64px; height:64px; flex:0 0 64px; border-radius:18px; display:grid; place-items:center; font-size:30px; background:rgba(255,255,255,.05); border:1px solid var(--line-2); }
+    .hero-state h2{ font-size:22px; font-weight:800; }
+    .hero-state p{ color:var(--text-dim); font-size:13.5px; margin-top:4px; }
+    .detail-row{ display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-bottom:1px solid var(--line); font-size:13.5px; }
+    .detail-row:last-child{ border-bottom:none; }
+    .detail-row span{ color:var(--text-mute); }
+    .detail-row b{ font-family:var(--mono); font-weight:600; }
+    .charge-visual{ display:flex; align-items:center; gap:24px; flex-wrap:wrap; justify-content:center; }
+    @media (max-width:860px){ .two{ grid-template-columns:1fr; } }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div id="srvBar" style="margin-bottom:1rem;padding:.6rem 1rem;background:rgba(0,0,0,.28);border-radius:10px;display:flex;gap:.5rem;align-items:center;font-size:.85rem;color:#fff;flex-wrap:wrap;">
-            <span>🌐 服务器地址</span>
-            <input id="serverAddr" placeholder="如 192.168.1.10:8080 或 http://host:8080" style="flex:1;min-width:200px;padding:.45rem .6rem;border-radius:8px;border:1px solid #cbd5e1;color:#1e293b;">
-            <button onclick="applyServer()" style="padding:.45rem 1.1rem;border:none;border-radius:8px;background:#6366f1;color:#fff;font-weight:700;cursor:pointer;">连接</button>
+  <div class="client-wrap">
+    <header class="client-head">
+      <div class="row">
+        <div class="brand-mark" style="width:46px;height:46px;font-size:22px;border-radius:14px;">🚗</div>
+        <div>
+          <div class="brand-name" style="font-size:18px;">ION 充电服务</div>
+          <div class="brand-sub" style="font-size:9.5px;">Charge Your Drive</div>
         </div>
-        <div class="header">
-            <h1>🚗 充电桩用户端</h1>
-            <p>输入车牌号即可申请充电</p>
+      </div>
+      <nav class="cmd-nav">
+        <a class="cmd-link" href="admin.html">调度盘</a>
+        <a class="cmd-link" href="console.html">运维控制台</a>
+        <a class="cmd-link active">用户端</a>
+      </nav>
+      <div class="srv">
+        <div class="srv-pill" title="服务器连接"><span class="dot"></span><span id="srvText">连接中</span></div>
+        <div class="srv-panel" id="srvPanel">
+          <span class="mute" style="font-size:12px;">🌐 服务器</span>
+          <input class="input mono" id="srvInput" style="width:220px;padding:8px 12px;" placeholder="192.168.1.10:8080">
+          <button class="btn btn-primary btn-sm" onclick="ION.applyServer()">连接</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- 状态横幅 -->
+    <section class="statebar idle rise" id="stateBar" style="--d:0">
+      <div class="glow"></div>
+      <div class="hero-state">
+        <div class="hero-ic" id="heroIc">💤</div>
+        <div class="grow">
+          <h2 id="heroTitle">未申请充电</h2>
+          <p id="heroDesc">输入车牌号并提交充电申请即可加入队列</p>
+        </div>
+        <div id="heroRing" class="hidden">
+          <div class="ring" id="ring" style="--p:0">
+            <div class="ring-inner">
+              <div class="ring-pct"><span id="ringPct">0</span><small>%</small></div>
+              <div class="ring-cap">充电进度</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="two">
+      <!-- 我的会话 -->
+      <section class="card rise" id="sessionCard" style="--d:1">
+        <div class="section-head"><div class="section-title"><span class="bar"></span>我的充电会话</div></div>
+        <div id="sessionBody">
+          <div class="pile-empty" style="height:auto;padding:24px 0;justify-content:center;">尚无进行中的充电会话</div>
+        </div>
+      </section>
+
+      <!-- 充电申请 -->
+      <section class="card rise" style="--d:2">
+        <div class="section-head"><div class="section-title"><span class="bar"></span>充电申请</div></div>
+
+        <div class="field">
+          <div class="field-label">车牌号</div>
+          <input type="text" class="input mono" id="plate" placeholder="京A 12345" maxlength="20" style="text-transform:uppercase;">
         </div>
 
-        <div id="statusBanner" class="status-banner idle">
-            <h2 style="margin: 0 0 0.5rem 0; color: inherit;">💤 未申请充电</h2>
-            <p style="margin: 0;">请输入车牌号并提交充电申请</p>
+        <div class="field">
+          <div class="field-label">电池容量 <span class="hint">度</span></div>
+          <input type="number" class="input mono" id="battery" value="60" min="10" max="200">
         </div>
 
-        <div class="card">
-            <h2>⚡ 充电申请</h2>
-
-            <div class="form-group">
-                <label class="form-label">车牌号</label>
-                <input type="text" class="input" id="plateNumber" placeholder="例如: 京A12345" maxlength="20">
+        <div class="field">
+          <div class="field-label">充电模式</div>
+          <div class="seg">
+            <div class="seg-opt fast on" data-mode="F" onclick="selectMode('F')">
+              <span class="ic">⚡</span><div class="t">快充</div><div class="d">30 度/h</div>
             </div>
-
-            <div class="form-group">
-                <label class="form-label">电池容量（度）</label>
-                <input type="number" class="input" id="batteryCapacity" placeholder="例如: 60" min="10" max="200" value="60">
+            <div class="seg-opt trickle" data-mode="T" onclick="selectMode('T')">
+              <span class="ic">🔌</span><div class="t">慢充</div><div class="d">10 度/h</div>
             </div>
-
-            <div class="form-group">
-                <label class="form-label">充电模式</label>
-                <div class="mode-grid">
-                    <div class="mode-btn selected" id="fastMode" onclick="selectMode('F')">
-                        <div class="mode-icon">⚡</div>
-                        <div class="mode-label">快充</div>
-                    </div>
-                    <div class="mode-btn" id="trickleMode" onclick="selectMode('T')">
-                        <div class="mode-icon">🔌</div>
-                        <div class="mode-label">慢充</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">充电量（度）</label>
-                <input type="number" class="input" id="chargeAmount" placeholder="请输入充电量" min="1" max="200" value="30">
-            </div>
-
-            <button class="btn btn-primary" onclick="submitRequest()">⚡ 提交充电申请</button>
-            <button class="btn btn-primary" onclick="modifyAmount()" style="background: linear-gradient(135deg, #f59e0b, #d97706);">🔧 修改充电量</button>
-            <button class="btn btn-danger" onclick="cancelRequest()">❌ 取消充电</button>
+          </div>
         </div>
+
+        <div class="field">
+          <div class="field-label">充电量 <span class="hint"><b id="amtView" class="mono" style="color:var(--energy)">30</b> 度</span></div>
+          <input type="range" class="range" id="amtRange" min="1" max="60" value="30" oninput="syncAmount(this.value)">
+          <div class="range-scale"><span>1</span><span>不超过电池容量</span><span id="amtMax">60</span></div>
+        </div>
+
+        <button class="btn btn-primary btn-block" style="margin-bottom:10px;" onclick="submitRequest()">⚡ 提交充电申请</button>
+        <div class="row" style="gap:10px;">
+          <button class="btn btn-ghost grow" id="btnModify" onclick="modify()" disabled>修改电量/模式</button>
+          <button class="btn btn-danger grow" id="btnCancel" onclick="cancel()" disabled>取消充电</button>
+        </div>
+        <p class="mute" style="font-size:11.5px;margin-top:12px;line-height:1.6;">
+          提交后约 1 秒等候窗口内可改电量/模式；进入桩排队或开始充电后不可修改。
+        </p>
+      </section>
     </div>
+  </div>
 
-    <div class="toast" id="toast"></div>
+  <!-- 账单 -->
+  <div class="mask" id="billMask">
+    <div class="modal">
+      <div class="modal-head">
+        <h3>⚡ 充电完成</h3>
+        <p id="billCar">账单已生成</p>
+      </div>
+      <div class="receipt" id="billBody"></div>
+      <div class="modal-foot"><button class="btn btn-primary btn-block" onclick="closeBill()">完成</button></div>
+    </div>
+  </div>
 
-    <script>
-        const SRV_KEY = 'serverBase';
-        function serverBase() { return localStorage.getItem(SRV_KEY) || 'http://localhost:8080'; }
-        function applyServer() {
-            let v = (document.getElementById('serverAddr').value || '').trim();
-            if (v) { if (!/^https?:\/\//i.test(v)) v = 'http://' + v; localStorage.setItem(SRV_KEY, v.replace(/\/+$/, '')); }
-            else { localStorage.removeItem(SRV_KEY); }
-            location.reload();
-        }
-        window.addEventListener('DOMContentLoaded', () => {
-            const el = document.getElementById('serverAddr'); if (el) el.value = serverBase();
+  <script src="lib/sockjs.min.js"></script>
+  <script src="lib/stomp.min.js"></script>
+  <script src="app.js"></script>
+  <script>
+    const F = ION.fmt;
+    ION.initServerBar();
+
+    let selectedMode = 'F';
+    let myPlate = null;
+    let currentReq = null;     // 最近一次 GET /charging/car 结果
+    let station = null;        // 最近一次 WebSocket 快照
+    let prevStatus = null;
+    let pollTimer = null;
+
+    function selectMode(m) {
+      selectedMode = m;
+      document.querySelectorAll('.seg-opt').forEach(o => o.classList.toggle('on', o.dataset.mode === m));
+    }
+    function syncAmount(v) { document.getElementById('amtView').textContent = v; }
+    document.getElementById('battery').addEventListener('input', e => {
+      const cap = Math.max(1, parseFloat(e.target.value) || 60);
+      const r = document.getElementById('amtRange');
+      r.max = cap; document.getElementById('amtMax').textContent = cap;
+      if (parseFloat(r.value) > cap) { r.value = cap; syncAmount(cap); }
+    });
+
+    async function submitRequest() {
+      const plate = document.getElementById('plate').value.trim().toUpperCase();
+      const battery = parseFloat(document.getElementById('battery').value);
+      const amount = parseFloat(document.getElementById('amtRange').value);
+      if (!plate) return ION.toast('请输入车牌号', 'error');
+      if (!battery || battery <= 0) return ION.toast('请输入有效的电池容量', 'error');
+      if (!amount || amount <= 0) return ION.toast('请输入有效的充电量', 'error');
+      if (amount > battery) return ION.toast('充电量不能超过电池容量', 'error');
+      try {
+        const r = await ION.postJson('/charging/request', {
+          carId: plate, batteryCapacity: battery, requestMode: selectedMode, requestAmount: amount
         });
+        if (r.success) {
+          ION.toast('充电申请已提交', 'success');
+          myPlate = plate;
+          localStorage.setItem('ionMyPlate', plate);
+          currentReq = { carId: plate, requestStatus: 'WAITING', requestMode: selectedMode === 'F' ? 'FAST' : 'TRICKLE', requestAmount: amount, queueNum: r.data && r.data.queueNum };
+          prevStatus = 'WAITING';
+          startPolling(); render();
+        } else ION.toast(r.message || '申请失败', 'error');
+      } catch (e) { ION.toast('提交失败，请检查服务器连接', 'error'); }
+    }
 
-        const API = serverBase() + '/api';
-        let selectedMode = 'F';
-        let myPlateNumber = null;
-
-        function selectMode(mode) {
-            selectedMode = mode;
-            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('selected'));
-            document.getElementById(mode === 'F' ? 'fastMode' : 'trickleMode').classList.add('selected');
+    async function modify() {
+      if (!myPlate) return;
+      const amount = parseFloat(document.getElementById('amtRange').value);
+      const wantMode = selectedMode === 'F' ? 'FAST' : 'TRICKLE';
+      try {
+        const r1 = await ION.postJson('/charging/amount', { carId: myPlate, amount });
+        if (!r1.success) { ION.toast(r1.message || '修改失败', 'error'); return; }
+        if (currentReq && currentReq.requestMode !== wantMode) {
+          const r2 = await ION.postJson('/charging/mode', { carId: myPlate, mode: selectedMode });
+          if (!r2.success) { ION.toast(r2.message || '充电量已改，模式未改', 'error'); return; }
         }
+        ION.toast('修改成功', 'success');
+      } catch (e) { ION.toast('修改失败', 'error'); }
+    }
 
-        async function submitRequest() {
-            const plateNumber = document.getElementById('plateNumber').value.trim();
-            if (!plateNumber) {
-                showToast('请输入车牌号', 'error');
-                return;
-            }
-
-            const batteryCapacity = parseFloat(document.getElementById('batteryCapacity').value);
-            if (!batteryCapacity || batteryCapacity <= 0) {
-                showToast('请输入有效的电池容量', 'error');
-                return;
-            }
-
-            const amount = parseFloat(document.getElementById('chargeAmount').value);
-            if (!amount || amount <= 0) {
-                showToast('请输入有效的充电量', 'error');
-                return;
-            }
-
-            if (amount > batteryCapacity) {
-                showToast('充电量不能超过电池容量', 'error');
-                return;
-            }
-
-            try {
-                const response = await fetch(`${API}/charging/request`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        carId: plateNumber,
-                        batteryCapacity: batteryCapacity,
-                        requestMode: selectedMode,
-                        requestAmount: amount
-                    })
-                });
-
-                const result = await response.json();
-                if (result.success) {
-                    showToast('充电申请已提交', 'success');
-                    myPlateNumber = plateNumber;
-                    updateStatus('waiting');
-                    // 开始定时查询状态
-                    startPollingStatus();
-                } else {
-                    showToast(result.message || '申请失败', 'error');
-                }
-            } catch (e) {
-                showToast('提交失败', 'error');
-            }
+    async function cancel() {
+      if (!myPlate) return;
+      const charging = currentReq && currentReq.requestStatus === 'CHARGING';
+      if (!confirm(charging ? '确定结束充电并出账单？' : '确定取消充电？')) return;
+      try {
+        if (charging) {
+          const pileId = currentReq.pileId || '';
+          const r = await ION.post('/charging/end', { carId: myPlate, pileId });
+          if (r.success) { showBill(r.data); finishTracking(); }
+          else ION.toast(r.message || '操作失败', 'error');
+        } else {
+          const r = await ION.postJson('/charging/cancel', { carId: myPlate });
+          if (r.success) { ION.toast('已取消充电', 'success'); finishTracking(); }
+          else ION.toast(r.message || '取消失败', 'error');
         }
+      } catch (e) { ION.toast('操作失败', 'error'); }
+    }
 
-        async function cancelRequest() {
-            const plateNumber = document.getElementById('plateNumber').value.trim();
-            if (!plateNumber) {
-                showToast('请输入车牌号', 'error');
-                return;
-            }
+    function finishTracking() {
+      currentReq = null; prevStatus = null;
+      localStorage.removeItem('ionMyPlate');
+      render();
+    }
 
-            if (!confirm('确定取消充电？')) {
-                return;
-            }
-
-            try {
-                // 查询车辆状态
-                const statusResponse = await fetch(`${API}/charging/car/${plateNumber}`);
-                const statusResult = await statusResponse.json();
-
-                if (!statusResult.success || !statusResult.data) {
-                    showToast('未找到充电记录', 'error');
-                    return;
-                }
-
-                const status = statusResult.data.requestStatus;
-
-                // 排队中或等待中：调用取消接口
-                if (status === 'WAITING' || status === 'QUEUED_AT_PILE') {
-                    const response = await fetch(`${API}/charging/cancel`, {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({carId: plateNumber})
-                    });
-
-                    const result = await response.json();
-                    if (result.success) {
-                        showToast('已取消充电', 'success');
-                        updateStatus('idle');
-                        myPlateNumber = null;
-                        if (statusPollingInterval) {
-                            clearInterval(statusPollingInterval);
-                        }
-                    } else {
-                        showToast(result.message || '取消失败', 'error');
-                    }
-                } else if (status === 'CHARGING') {
-                    // 正在充电：调用结束接口
-                    const pileId = statusResult.data.pileId || '';
-                    const response = await fetch(`${API}/charging/end?carId=${plateNumber}&pileId=${pileId}`, {
-                        method: 'POST'
-                    });
-
-                    const result = await response.json();
-                    if (result.success) {
-                        showToast('充电已结束，账单已生成', 'success');
-                        updateStatus('idle');
-                        myPlateNumber = null;
-                        if (statusPollingInterval) {
-                            clearInterval(statusPollingInterval);
-                        }
-                        // 显示账单信息
-                        if (result.data) {
-                            const b = result.data;
-                            alert(`账单详情：\n充电费用：${b.totalChargeFee}元\n服务费：${b.totalServiceFee}元\n总费用：${b.totalFee}元`);
-                        }
-                    } else {
-                        showToast(result.message || '取消失败', 'error');
-                    }
-                } else {
-                    showToast('当前状态无法取消', 'error');
-                }
-            } catch (e) {
-                showToast('操作失败：' + e.message, 'error');
-            }
+    function startPolling() {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(pollCar, 2500);
+      pollCar();
+    }
+    async function pollCar() {
+      if (!myPlate) return;
+      try {
+        const r = await ION.getJson('/charging/car/' + encodeURIComponent(myPlate));
+        if (r.success && r.data) {
+          const st = r.data.requestStatus;
+          if ((st === 'FINISHED') && prevStatus && prevStatus !== 'FINISHED') {
+            const b = await ION.getJson('/billing/bill?carId=' + encodeURIComponent(myPlate));
+            if (b.success && b.data && b.data.length) showBill(b.data[b.data.length - 1]);
+            currentReq = null; prevStatus = 'FINISHED'; localStorage.removeItem('ionMyPlate'); render(); return;
+          }
+          if (st === 'CANCELLED' || st === 'FINISHED') { currentReq = null; localStorage.removeItem('ionMyPlate'); render(); return; }
+          currentReq = r.data; prevStatus = st;
         }
+      } catch (e) { /* ignore */ }
+      render();
+    }
 
-        async function modifyAmount() {
-            const plateNumber = document.getElementById('plateNumber').value.trim();
-            if (!plateNumber) {
-                showToast('请输入车牌号', 'error');
-                return;
-            }
+    function setBar(cls, ic, title, desc, ring) {
+      const bar = document.getElementById('stateBar');
+      bar.className = 'statebar ' + cls;
+      document.getElementById('heroIc').textContent = ic;
+      document.getElementById('heroTitle').textContent = title;
+      document.getElementById('heroDesc').textContent = desc;
+      document.getElementById('heroRing').classList.toggle('hidden', !ring);
+    }
 
-            const amount = parseFloat(document.getElementById('chargeAmount').value);
-            if (!amount || amount <= 0) {
-                showToast('请输入有效的充电量', 'error');
-                return;
-            }
+    function render() {
+      const btnMod = document.getElementById('btnModify');
+      const btnCan = document.getElementById('btnCancel');
+      const st = currentReq && currentReq.requestStatus;
 
-            try {
-                const response = await fetch(`${API}/charging/amount`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        carId: plateNumber,
-                        amount: amount
-                    })
-                });
+      // 按钮状态
+      btnMod.disabled = !(st === 'WAITING');
+      btnCan.disabled = !st || st === 'FINISHED' || st === 'CANCELLED';
+      btnCan.textContent = st === 'CHARGING' ? '结束充电并出账单' : '取消充电';
 
-                const result = await response.json();
-                if (result.success) {
-                    showToast('充电量修改成功', 'success');
-                } else {
-                    showToast(result.message || '修改失败', 'error');
-                }
-            } catch (e) {
-                showToast('修改失败', 'error');
-            }
+      const body = document.getElementById('sessionBody');
+
+      if (!st) {
+        setBar('idle', '💤', '未申请充电', '输入车牌号并提交充电申请即可加入队列', false);
+        body.innerHTML = `<div class="pile-empty" style="height:auto;padding:24px 0;justify-content:center;">尚无进行中的充电会话</div>`;
+        return;
+      }
+
+      // 充电中：从 WebSocket 取实时进度/费用
+      let live = null;
+      if (station && station.piles) live = station.piles.find(p => p.currentCarId === myPlate);
+      const modeTxt = currentReq.requestMode === 'FAST' ? '快充' : '慢充';
+
+      if (st === 'CHARGING' && live) {
+        setBar('charge', '⚡', '充电中', `车辆 ${myPlate} 正在 ${live.pileNo} 充电`, true);
+        document.getElementById('ring').style.setProperty('--p', live.chargeProgress || 0);
+        document.getElementById('ringPct').textContent = live.chargeProgress || 0;
+        body.innerHTML = detailRows([
+          ['充电桩', live.pileNo], ['模式', modeTxt],
+          ['已充电量', `${F.num(live.chargedAmount, 1)} / ${F.num(live.requestAmount, 0)} 度`],
+          ['当前费用', `¥${F.money(live.currentCost)}`],
+          ['状态', '<span class="pill live"><span class="dot"></span>充电中</span>']
+        ]);
+      } else if (st === 'CHARGING') {
+        setBar('charge', '⚡', '充电中', `车辆 ${myPlate} 正在充电`, false);
+        body.innerHTML = detailRows([['模式', modeTxt], ['请求电量', `${F.num(currentReq.requestAmount, 0)} 度`], ['状态', '<span class="pill live"><span class="dot"></span>充电中</span>']]);
+      } else if (st === 'QUEUED_AT_PILE' || st === 'CALLED') {
+        let pos = '';
+        if (station && station.waiting) {
+          const me = station.waiting.find(w => w.carId === myPlate);
+          if (me) pos = `${me.pileNo} · 队位 ${me.queuePosition}`;
         }
-
-        function updateStatus(status) {
-            const banner = document.getElementById('statusBanner');
-            banner.className = `status-banner ${status}`;
-
-            if (status === 'idle') {
-                banner.innerHTML = '<h2 style="margin: 0 0 0.5rem 0; color: inherit;">💤 未申请充电</h2><p style="margin: 0;">请输入车牌号并提交充电申请</p>';
-            } else if (status === 'waiting') {
-                banner.innerHTML = `<h2 style="margin: 0 0 0.5rem 0; color: inherit;">⏱️ 排队中</h2><p style="margin: 0;">车辆 ${myPlateNumber} 正在等待充电桩分配</p>`;
-            } else if (status === 'charging') {
-                banner.innerHTML = `<h2 style="margin: 0 0 0.5rem 0; color: inherit;">⚡ 充电中</h2><p style="margin: 0;">车辆 ${myPlateNumber} 正在充电</p>`;
-            }
+        setBar('wait', '🅿️', st === 'CALLED' ? '已叫号' : '已分配充电桩', `车辆 ${myPlate} ${pos ? '在 ' + pos + ' 等待' : '已进入桩排队区'}`, false);
+        body.innerHTML = detailRows([
+          ['排队号', currentReq.queueNum || '—'], ['模式', modeTxt],
+          ['充电桩', currentReq.pileId ? (station && station.waiting.find(w => w.carId === myPlate)?.pileNo || currentReq.pileId) : '—'],
+          ['请求电量', `${F.num(currentReq.requestAmount, 0)} 度`],
+          ['状态', '<span class="pill idle"><span class="dot"></span>桩前排队</span>']
+        ]);
+      } else { // WAITING
+        let ahead = '';
+        if (station && station.waiting) {
+          const same = station.waiting.filter(w => w.status === 'WAITING' && w.mode === currentReq.requestMode);
+          const idx = same.findIndex(w => w.carId === myPlate);
+          if (idx >= 0) ahead = `前方还有 ${idx} 辆同模式车辆`;
         }
+        setBar('wait', '⏳', '等候区排队中', `车辆 ${myPlate} 正在等待充电桩分配${ahead ? ' · ' + ahead : ''}`, false);
+        body.innerHTML = detailRows([
+          ['排队号', currentReq.queueNum || '—'], ['模式', modeTxt],
+          ['请求电量', `${F.num(currentReq.requestAmount, 0)} 度`],
+          ['状态', '<span class="pill wait"><span class="dot"></span>等候区</span>']
+        ]);
+      }
+    }
 
-        function showToast(message, type = 'info') {
-            const toast = document.getElementById('toast');
-            toast.textContent = message;
-            toast.className = `toast ${type} show`;
-            setTimeout(() => toast.classList.remove('show'), 3000);
-        }
+    function detailRows(rows) {
+      return rows.map(([k, v]) => `<div class="detail-row"><span>${k}</span><b>${v}</b></div>`).join('');
+    }
 
-        // 定时查询车辆状态
-        let statusPollingInterval = null;
+    function showBill(b) {
+      if (!b) return;
+      document.getElementById('billCar').textContent = (b.carId || myPlate || '') + ' · 账单已生成';
+      document.getElementById('billBody').innerHTML = `
+        <div class="receipt-row"><span>充电费用</span><b>¥${F.money(b.totalChargeFee)}</b></div>
+        <div class="receipt-row"><span>服务费用</span><b>¥${F.money(b.totalServiceFee)}</b></div>
+        <div class="receipt-row total"><span>合计</span><b>¥${F.money(b.totalFee)}</b></div>`;
+      document.getElementById('billMask').classList.add('show');
+    }
+    function closeBill() {
+      document.getElementById('billMask').classList.remove('show');
+      setBar('done', '✅', '充电已完成', '感谢使用 ION 充电服务，欢迎再次光临', false);
+      document.getElementById('sessionBody').innerHTML = `<div class="pile-empty" style="height:auto;padding:24px 0;justify-content:center;">账单已结算，可发起新的充电申请</div>`;
+    }
 
-        function startPollingStatus() {
-            if (statusPollingInterval) {
-                clearInterval(statusPollingInterval);
-            }
-            statusPollingInterval = setInterval(async () => {
-                if (!myPlateNumber) {
-                    clearInterval(statusPollingInterval);
-                    return;
-                }
-                try {
-                    const response = await fetch(`${API}/charging/car/${myPlateNumber}`);
-                    const result = await response.json();
-                    if (result.success && result.data) {
-                        const status = result.data.requestStatus;
-                        const pileId = result.data.pileId;
-
-                        if (status === 'QUEUED_AT_PILE' && pileId) {
-                            const banner = document.getElementById('statusBanner');
-                            banner.className = 'status-banner charging';
-                            banner.innerHTML = `<h2 style="margin: 0 0 0.5rem 0; color: inherit;">✅ 已分配充电桩</h2><p style="margin: 0;">车辆 ${myPlateNumber} 已分配到 ${pileId}</p>`;
-                        } else if (status === 'CHARGING' && pileId) {
-                            const banner = document.getElementById('statusBanner');
-                            banner.className = 'status-banner charging';
-                            banner.innerHTML = `<h2 style="margin: 0 0 0.5rem 0; color: inherit;">⚡ 充电中</h2><p style="margin: 0;">车辆 ${myPlateNumber} 正在 ${pileId} 充电</p>`;
-                        } else if (status === 'WAITING') {
-                            updateStatus('waiting');
-                        }
-                    }
-                } catch (e) {
-                    console.error('查询状态失败', e);
-                }
-            }, 2000); // 每2秒查询一次
-        }
-
-        selectMode('F');
-    </script>
+    ION.connectStatus(d => { station = d; if (myPlate) render(); });
+    // 恢复上次会话：刷新或重开页面后自动继续跟踪进行中的充电
+    (function restoreSession() {
+      const saved = localStorage.getItem('ionMyPlate');
+      if (saved) { document.getElementById('plate').value = saved; myPlate = saved; startPolling(); }
+    })();
+    render();
+  </script>
 </body>
 </html>

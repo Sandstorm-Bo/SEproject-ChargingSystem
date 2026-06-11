@@ -4,6 +4,7 @@ import com.charging.station.domain.DispatchPlan;
 import com.charging.station.dto.Result;
 import com.charging.station.enums.RequestMode;
 import com.charging.station.service.DispatchService;
+import com.charging.station.service.FaultSchedulerService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,6 +20,9 @@ public class DispatchController {
 
     @Autowired
     private DispatchService dispatchService;
+
+    @Autowired
+    private FaultSchedulerService faultSchedulerService;
 
     /**
      * 优先级故障调度
@@ -57,6 +61,44 @@ public class DispatchController {
         try {
             String result = dispatchService.recoverPileAndRedispatch(pileId);
             return Result.success(result);
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 定时故障编排（验收可视化）：faultDelaySec 秒后注入故障，recoverDelaySec 秒后自动恢复（<=0 不恢复）。
+     * POST /api/dispatch/fault/schedule?pileId=P_F1&strategy=priority&faultDelaySec=10&recoverDelaySec=20
+     */
+    @PostMapping("/fault/schedule")
+    public Result<String> scheduleFault(@RequestParam String pileId,
+                                        @RequestParam(defaultValue = "priority") String strategy,
+                                        @RequestParam(defaultValue = "0") long faultDelaySec,
+                                        @RequestParam(defaultValue = "0") long recoverDelaySec) {
+        try {
+            faultSchedulerService.schedule(pileId, strategy, faultDelaySec, recoverDelaySec);
+            String msg = String.format("已安排 %s：%ds 后注入%s故障", pileId, faultDelaySec,
+                    "timeorder".equalsIgnoreCase(strategy) ? "时间顺序" : "优先级");
+            msg += recoverDelaySec > 0 ? String.format("，再 %ds 后自动恢复", recoverDelaySec) : "（不自动恢复）";
+            return Result.success(msg);
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 取消定时故障：不带 pileId 取消全部。
+     * POST /api/dispatch/fault/schedule/cancel[?pileId=P_F1]
+     */
+    @PostMapping("/fault/schedule/cancel")
+    public Result<String> cancelScheduledFault(@RequestParam(required = false) String pileId) {
+        try {
+            if (pileId == null || pileId.isBlank()) {
+                faultSchedulerService.cancelAll();
+                return Result.success("已取消全部定时故障安排");
+            }
+            faultSchedulerService.cancel(pileId);
+            return Result.success("已取消 " + pileId + " 的定时故障安排");
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }

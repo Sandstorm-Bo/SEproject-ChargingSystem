@@ -2,6 +2,7 @@ package com.charging.station.controller;
 
 import com.charging.station.domain.ChargingPile;
 import com.charging.station.domain.ChargingQueue;
+import com.charging.station.domain.ChargingSession;
 import com.charging.station.dto.Result;
 import com.charging.station.service.MonitoringService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -65,14 +66,40 @@ public class MonitorController {
     }
 
     /**
-     * 重置数据库
+     * 重置数据库（清空充电业务数据并复位充电桩，等价 reset_db.sh）
      * POST /api/monitor/reset
      */
     @PostMapping("/reset")
     public Result<String> resetDatabase() {
         try {
-            // 这里简单返回成功，实际重置由前端调用reset_db.sh
-            return Result.success("请使用 reset_db.sh 脚本重置数据库");
+            monitoringService.resetAll();
+            return Result.success("已重置：充电请求/会话/账单已清空，充电桩复位为空闲", null);
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 查询仿真倍速（1 真实秒 = N 仿真秒）
+     * GET /api/monitor/sim-speed
+     */
+    @GetMapping("/sim-speed")
+    public Result<Double> getSimSpeed() {
+        return Result.success(ChargingSession.TIME_ACCELERATION);
+    }
+
+    /**
+     * 设置仿真倍速（演示用：1~600）
+     * POST /api/monitor/sim-speed?value=120
+     */
+    @PostMapping("/sim-speed")
+    public Result<Double> setSimSpeed(@RequestParam double value) {
+        try {
+            if (value < 1 || value > 600) {
+                return Result.error("仿真倍速需在 1 ~ 600 之间");
+            }
+            ChargingSession.TIME_ACCELERATION = value;
+            return Result.success("仿真倍速已更新", value);
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }

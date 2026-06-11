@@ -1,279 +1,315 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>管理端 - 充电桩系统</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-            min-height: 100vh;
-            padding: 2rem;
-            color: white;
-        }
-        .container { max-width: 1600px; margin: 0 auto; }
-        .header {
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-            padding: 2rem;
-            border-radius: 20px;
-            margin-bottom: 2rem;
-            text-align: center;
-            box-shadow: 0 20px 60px rgba(99,102,241,0.3);
-        }
-        .header h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
-        .main-grid {
-            display: grid;
-            grid-template-columns: 2.5fr 1fr;
-            gap: 2rem;
-        }
-        .card {
-            background: rgba(255,255,255,0.95);
-            border-radius: 20px;
-            padding: 2rem;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            color: #1e293b;
-        }
-        .piles-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-        .pile-card {
-            background: white;
-            border: 3px solid #e5e7eb;
-            border-radius: 16px;
-            padding: 1.5rem;
-            cursor: pointer;
-            transition: all 0.3s;
-            position: relative;
-        }
-        .pile-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 12px 30px rgba(0,0,0,0.15);
-        }
-        .pile-card.charging {
-            border-color: #10b981;
-            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
-        }
-        .pile-card.fault {
-            border-color: #ef4444;
-            background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
-        }
-        .pile-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-        }
-        .pile-id { font-size: 1.5rem; font-weight: 800; }
-        .pile-status {
-            padding: 0.5rem 1rem;
-            border-radius: 20px;
-            font-size: 0.875rem;
-            font-weight: 600;
-        }
-        .pile-status.charging { background: #10b981; color: white; }
-        .pile-status.available { background: #3b82f6; color: white; }
-        .pile-status.fault { background: #ef4444; color: white; }
-        .progress-bar {
-            width: 100%;
-            height: 12px;
-            background: #e5e7eb;
-            border-radius: 6px;
-            overflow: hidden;
-            margin: 0.75rem 0;
-        }
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #10b981, #6366f1);
-            transition: width 0.5s;
-        }
-        .pile-stats {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.875rem;
-            margin-top: 0.75rem;
-        }
-        .slider {
-            width: 100%;
-            height: 8px;
-            border-radius: 4px;
-            background: #e5e7eb;
-            outline: none;
-            -webkit-appearance: none;
-        }
-        .slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            cursor: pointer;
-        }
-        .btn {
-            width: 100%;
-            padding: 1rem;
-            border: none;
-            border-radius: 12px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .btn-danger {
-            background: linear-gradient(135deg, #ef4444, #dc2626);
-            color: white;
-        }
-        .btn-danger:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(239,68,68,0.3);
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>调度盘 · 智能充电桩调度计费系统</title>
+  <link rel="stylesheet" href="app.css">
+  <style>
+    /* ===== 充电站实景调度盘（本页专属场景） ===== */
+    .yard{ position:relative; border:1px solid var(--line-2); border-radius:24px; padding:24px; overflow:hidden;
+      background:
+        radial-gradient(135% 95% at 50% -12%, rgba(47,240,207,.12), transparent 55%),
+        linear-gradient(180deg, rgba(23,36,46,.78), rgba(13,22,29,.62));
+      box-shadow:var(--shadow); }
+    .yard::before{ content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
+      background-image:linear-gradient(rgba(120,178,186,.05) 1px,transparent 1px), linear-gradient(90deg,rgba(120,178,186,.05) 1px,transparent 1px);
+      background-size:42px 42px;
+      -webkit-mask-image:linear-gradient(180deg,#000,transparent 92%); mask-image:linear-gradient(180deg,#000,transparent 92%); }
+    .yard > *{ position:relative; z-index:1; }
+    .yard-hud{ position:absolute; top:18px; right:20px; display:flex; gap:8px; z-index:4; }
+
+    .zone-tag{ font-family:var(--mono); font-size:11px; letter-spacing:1.5px; color:var(--text-mute); text-transform:uppercase; display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+    .zone-tag i{ width:8px; height:8px; border-radius:2px; display:inline-block; }
+    .zone-tag b{ color:var(--text-dim); font-weight:600; }
+
+    /* 等候区 holding lane */
+    .lane{ border:1px dashed var(--line-2); border-radius:16px; padding:12px 16px 12px; background:rgba(255,255,255,.034); margin-bottom:20px; position:relative; }
+    .lane .flow-tag{ position:absolute; right:16px; top:13px; font-family:var(--mono); font-size:10px; color:var(--energy); letter-spacing:1px; opacity:.8; }
+    .lane-cars{ display:flex; gap:14px; overflow-x:auto; padding:10px 2px 2px; min-height:72px; align-items:flex-end; }
+    .lane-empty{ color:var(--text-mute); font-size:12.5px; display:flex; align-items:center; min-height:64px; gap:8px; }
+
+    /* zones */
+    .zones{ display:grid; grid-template-columns:0.95fr 1.35fr; gap:18px; }
+    @media (max-width:1080px){ .zones{ grid-template-columns:1fr; } }
+    .zone{ border:1px solid var(--line-2); border-radius:18px; padding:16px; background:rgba(255,255,255,.03); }
+    .bays{ display:flex; flex-direction:column; gap:13px; }
+
+    /* bay = post + 充电位 + 排队位 */
+    .bay{ display:flex; align-items:center; gap:3px; padding:11px 13px; border-radius:14px; border:1px solid var(--line-2);
+      background:linear-gradient(90deg, rgba(255,255,255,.07), rgba(255,255,255,.025)); position:relative; min-height:108px; transition:border-color .25s, background .25s; }
+    .bay.s-busy{ border-color:rgba(65,224,140,.3); }
+    .bay.s-fault{ border-color:rgba(255,101,119,.36); background:linear-gradient(90deg, rgba(255,101,119,.07), transparent); }
+    .bay.s-off{ opacity:.5; }
+
+    .post{ width:58px; flex:0 0 58px; height:86px; border-radius:12px; background:linear-gradient(180deg,#17262e,#0b141a);
+      border:1px solid var(--line-2); display:flex; flex-direction:column; align-items:center; padding:7px 6px; position:relative; }
+    .post .screen{ width:100%; background:#03090c; border:1px solid var(--line); border-radius:6px; padding:4px 0; text-align:center;
+      font-family:var(--mono); font-weight:600; font-size:14px; color:var(--energy); position:relative; }
+    .post .led{ position:absolute; top:-3px; right:-3px; width:7px; height:7px; border-radius:50%; background:var(--text-mute); }
+    .bay.s-busy .post .led{ background:var(--live); box-shadow:var(--glow-live); animation:pulse 1.6s infinite; }
+    .bay.s-fault .post .led{ background:var(--rose); box-shadow:var(--glow-rose); animation:pulse 1.1s infinite; }
+    .post .bolt{ font-size:17px; margin-top:7px; opacity:.45; line-height:1; }
+    .bay.s-busy .post .bolt{ opacity:1; filter:drop-shadow(0 0 5px var(--live)); }
+    .post .pwr{ font-family:var(--mono); font-size:9px; color:var(--text-mute); margin-top:auto; }
+    .post .plug{ position:absolute; right:-5px; top:50%; width:8px; height:11px; transform:translateY(-50%); background:var(--line-3); border-radius:0 3px 3px 0; }
+
+    .beam{ flex:0 0 24px; height:5px; border-radius:3px; align-self:center; background:repeating-linear-gradient(90deg, var(--live) 0 5px, transparent 5px 11px); background-size:22px 100%; opacity:0; transition:opacity .25s; }
+    .bay.s-busy .beam{ opacity:1; animation:flow .5s linear infinite; }
+    @keyframes flow{ to{ background-position:-22px 0; } }
+
+    .spot{ flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:4px; min-width:82px; padding:0 4px; }
+    .spot.q{ min-width:64px; }
+    .spot .ghost{ width:52px; height:30px; border:1px dashed var(--line-2); border-radius:9px; opacity:.4; }
+    .slot-tag{ font-family:var(--mono); font-size:8px; letter-spacing:1px; color:var(--text-faint); text-transform:uppercase; }
+
+    .vcar{ display:flex; flex-direction:column; align-items:center; gap:3px; }
+    .vcar.drive{ animation:driveIn .55s cubic-bezier(.2,.85,.3,1); }
+    .vcar .plate{ font-family:var(--mono); font-size:10px; color:var(--text-dim); white-space:nowrap; }
+    .caricon{ width:62px; height:30px; color:var(--blue); }
+    .vcar.fast .caricon{ color:var(--energy); }
+    .vcar.trickle .caricon{ color:var(--violet); }
+    .vcar.charging .caricon{ filter:drop-shadow(0 0 8px currentColor); }
+    .vcar.small .caricon{ width:46px; height:22px; }
+    .vcar.small .plate{ font-size:9px; }
+    .vgauge{ width:56px; height:5px; border-radius:3px; background:rgba(255,255,255,.12); overflow:hidden; }
+    .vgauge i{ display:block; height:100%; width:0; background:linear-gradient(90deg,var(--energy),var(--live)); transition:width .6s cubic-bezier(.4,0,.2,1); }
+    .vcar .pctlbl{ font-family:var(--mono); font-size:9.5px; color:var(--live); }
+    .vcar .cost{ font-family:var(--mono); font-size:9px; color:var(--text-mute); }
+    .vcar .qn{ font-family:var(--mono); font-size:8.5px; color:var(--text-mute); }
+
+    .bay-stat{ position:absolute; right:12px; top:9px; font-family:var(--mono); font-size:9.5px; color:var(--text-mute); }
+    .fault-tag{ display:flex; flex-direction:column; align-items:center; gap:2px; color:#ffb3bc; font-size:11px; text-align:center; max-width:150px; }
+
+    /* telemetry */
+    .telemetry{ display:flex; flex-wrap:wrap; border:1px solid var(--line); border-radius:16px; overflow:hidden; background:var(--panel); box-shadow:var(--shadow); }
+    .tele{ flex:1 1 130px; padding:14px 20px; border-right:1px solid var(--line); }
+    .tele:last-child{ border-right:none; }
+    .tele .tlabel{ font-family:var(--mono); font-size:9.5px; letter-spacing:1.5px; text-transform:uppercase; color:var(--text-mute); }
+    .tele b{ display:block; font-family:var(--mono); font-size:25px; font-weight:600; font-variant-numeric:tabular-nums; margin-top:5px; letter-spacing:-.5px; }
+    .tele b small{ font-size:13px; color:var(--text-mute); font-weight:500; }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div id="srvBar" style="margin-bottom:1rem;padding:.6rem 1rem;background:rgba(0,0,0,.28);border-radius:10px;display:flex;gap:.5rem;align-items:center;font-size:.85rem;color:#fff;flex-wrap:wrap;">
-            <span>🌐 服务器地址</span>
-            <input id="serverAddr" placeholder="如 192.168.1.10:8080 或 http://host:8080" style="flex:1;min-width:220px;padding:.45rem .6rem;border-radius:8px;border:1px solid #cbd5e1;color:#1e293b;">
-            <button onclick="applyServer()" style="padding:.45rem 1.1rem;border:none;border-radius:8px;background:#6366f1;color:#fff;font-weight:700;cursor:pointer;">连接</button>
-            <span id="srvState" style="opacity:.9;"></span>
+  <!-- 车辆图形（侧视）符号，供复用 -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="car" viewBox="0 0 64 32">
+      <path d="M4 22 Q4 15 11 14 L18 14 Q22 6 31 6 L40 6 Q49 7 53 14 L58 15 Q60 16 60 21 L60 23 Q60 25 57 25 L7 25 Q4 25 4 22 Z" fill="currentColor"/>
+      <path d="M21 13 L26 8.5 L38 8.5 Q43 9 46 13 Z" fill="rgba(3,12,14,.55)"/>
+      <circle cx="18" cy="25" r="4.4" fill="#050c0f"/><circle cx="18" cy="25" r="1.7" fill="currentColor"/>
+      <circle cx="47" cy="25" r="4.4" fill="#050c0f"/><circle cx="47" cy="25" r="1.7" fill="currentColor"/>
+    </symbol>
+  </svg>
+
+  <div class="page">
+    <!-- 顶部指挥条（横向导航，非侧栏） -->
+    <header class="cmdbar">
+      <div class="cmd-brand">
+        <div class="brand-mark">⚡</div>
+        <div>
+          <div class="brand-name">充电站实时调度盘</div>
+          <div class="brand-sub">Live Station Yard</div>
         </div>
-        <div class="header">
-            <h1>⚡ 充电桩管理系统</h1>
-            <p>实时监控 · 智能调度</p>
+      </div>
+      <nav class="cmd-nav">
+        <a class="cmd-link active">调度盘</a>
+        <a class="cmd-link" href="console.html">运维控制台</a>
+        <a class="cmd-link" href="client.html">用户端</a>
+      </nav>
+      <div class="topbar-actions">
+        <span class="chip flat" id="tariffChip">平时 ¥0.70/度</span>
+        <span class="live-badge" id="liveBadge"><span class="dot"></span><span class="clock" id="clock">--:--:--</span></span>
+        <div class="srv">
+          <div class="srv-pill" title="服务器连接"><span class="dot"></span><span id="srvText">连接中</span></div>
+          <div class="srv-panel" id="srvPanel">
+            <span class="mute" style="font-size:12px;">🌐 服务器</span>
+            <input class="input mono" id="srvInput" style="width:210px;padding:8px 12px;" placeholder="192.168.1.10:8080">
+            <button class="btn btn-primary btn-sm" onclick="ION.applyServer()">连接</button>
+          </div>
         </div>
+      </div>
+    </header>
 
-        <div class="main-grid">
-            <div class="card">
-                <h2 style="margin-bottom: 1.5rem;">⚡ 快充区</h2>
-                <div class="piles-grid" id="fastPiles"></div>
-                <h2 style="margin-bottom: 1.5rem;">🔌 慢充区</h2>
-                <div class="piles-grid" id="tricklePiles"></div>
-            </div>
+    <!-- 实景调度盘 -->
+    <section class="yard">
+      <div class="yard-hud">
+        <span class="chip valley" id="periodChip">谷时 ¥0.40</span>
+      </div>
 
-            <div style="display: flex; flex-direction: column; gap: 1.5rem;">
-                <div class="card">
-                    <h3 style="margin-bottom: 1rem;">⏱ 时间流速</h3>
-                    <input type="range" class="slider" id="timeSlider" min="1" max="4" value="2">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #64748b; margin-top: 0.5rem;">
-                        <span>1x</span><span>10x</span><span>60x</span><span>即时</span>
-                    </div>
-                    <div style="text-align: center; padding: 1.5rem; background: #eef2ff; border-radius: 12px; margin-top: 1rem;">
-                        <div style="font-size: 2.5rem; font-weight: 800; color: #6366f1;" id="currentSpeed">10x</div>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h3 style="margin-bottom: 1rem;">📊 统计</h3>
-                    <div style="display: grid; gap: 1rem;">
-                        <div style="padding: 1rem; background: #f8f9ff; border-radius: 8px; text-align: center;">
-                            <div style="font-size: 2rem; font-weight: 800; color: #6366f1;" id="statCharging">0</div>
-                            <div style="font-size: 0.875rem; color: #64748b;">充电中</div>
-                        </div>
-                        <div style="padding: 1rem; background: #f8f9ff; border-radius: 8px; text-align: center;">
-                            <div style="font-size: 2rem; font-weight: 800; color: #6366f1;" id="statWaiting">0</div>
-                            <div style="font-size: 0.875rem; color: #64748b;">等待</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <button class="btn btn-danger" onclick="resetDB()">🗑️ 重置数据库</button>
-                </div>
-            </div>
+      <!-- 等候区 -->
+      <div class="lane">
+        <div class="zone-tag" style="margin-bottom:0;">
+          <i style="background:var(--amber)"></i>等候区 · WAITING AREA
+          <b id="laneCount">0 / 10</b>
+          <span class="flow-tag">下行进入充电区 ↓</span>
         </div>
-    </div>
+        <div class="lane-cars" id="laneCars"><div class="lane-empty">○ 等候区空闲，无车辆排队</div></div>
+      </div>
 
-    <script src="lib/sockjs.min.js"></script>
-    <script src="lib/stomp.min.js"></script>
-    <script>
-        const SRV_KEY = 'serverBase';
-        function serverBase() { return localStorage.getItem(SRV_KEY) || 'http://localhost:8080'; }
-        function applyServer() {
-            let v = (document.getElementById('serverAddr').value || '').trim();
-            if (v) { if (!/^https?:\/\//i.test(v)) v = 'http://' + v; localStorage.setItem(SRV_KEY, v.replace(/\/+$/, '')); }
-            else { localStorage.removeItem(SRV_KEY); }
-            location.reload();
+      <!-- 充电区 -->
+      <div class="zones">
+        <div class="zone">
+          <div class="zone-tag"><i style="background:var(--energy)"></i>快充区 · FAST · 30kW <b>（充电位 + 2 排队位）</b></div>
+          <div class="bays" id="fastBays"></div>
+        </div>
+        <div class="zone">
+          <div class="zone-tag"><i style="background:var(--violet)"></i>慢充区 · TRICKLE · 10kW <b>（充电位 + 2 排队位）</b></div>
+          <div class="bays" id="trickleBays"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 仪表读数条 -->
+    <section class="telemetry">
+      <div class="tele"><div class="tlabel">在线充电桩</div><b><span id="tOnline">0</span><small>/<span id="tTotal">5</span></small></b></div>
+      <div class="tele"><div class="tlabel">充电中</div><b id="tCharging" style="color:var(--live)">0</b></div>
+      <div class="tele"><div class="tlabel">等候区</div><b id="tWaiting" style="color:var(--amber)">0</b></div>
+      <div class="tele"><div class="tlabel">桩前排队</div><b id="tQueued">0</b></div>
+      <div class="tele"><div class="tlabel">累计充电量</div><b style="color:var(--energy-2)"><span id="tEnergy">0</span><small>度</small></b></div>
+      <div class="tele"><div class="tlabel">累计营收</div><b style="color:var(--energy)">¥<span id="tRevenue">0</span></b></div>
+    </section>
+  </div>
+
+  <script src="lib/sockjs.min.js"></script>
+  <script src="lib/stomp.min.js"></script>
+  <script src="app.js"></script>
+  <script>
+    const F = ION.fmt;
+    ION.initServerBar();
+    ION.startClock('clock');
+
+    const bays = {};   // pileId -> refs
+    const M = 2;       // 每桩排队位（M=3 含1充电位）
+    const shown = new Set();   // 已在场车辆，用于只对"新驶入"的车辆播放动画
+    function triggerDrive(el) { if (!el) return; el.classList.remove('drive'); void el.offsetWidth; el.classList.add('drive'); }
+
+    function buildBay(p) {
+      const root = document.createElement('div');
+      root.className = 'bay';
+      const mode = p.pileType === 'FAST' ? 'fast' : 'trickle';
+      root.innerHTML = `
+        <div class="post">
+          <div class="screen">${p.pileNo}<span class="led"></span></div>
+          <div class="bolt">⚡</div>
+          <div class="pwr">${p.ratedPower || (p.pileType === 'FAST' ? 30 : 10)}kW</div>
+          <div class="plug"></div>
+        </div>
+        <div class="beam"></div>
+        <div class="spot charging">
+          <div class="vcar ${mode} charging" data-role="car" style="display:none">
+            <span class="plate" data-role="plate"></span>
+            <svg class="caricon"><use href="#car"/></svg>
+            <div class="vgauge"><i data-role="gauge"></i></div>
+            <span class="pctlbl"><span data-role="pct">0</span>% · <span class="cost" data-role="cost">¥0</span></span>
+          </div>
+          <div data-role="pad"><div class="ghost"></div><div class="slot-tag">充电位</div></div>
+        </div>
+        <div class="spot q" data-role="q0"></div>
+        <div class="spot q" data-role="q1"></div>
+        <div class="bay-stat" data-role="stat"></div>`;
+      const q = s => root.querySelector(`[data-role=${s}]`);
+      bays[p.pileId] = {
+        root, mode, beam: root.querySelector('.beam'),
+        car: q('car'), plate: q('plate'), gauge: q('gauge'), pct: q('pct'), cost: q('cost'),
+        pad: q('pad'), qslots: [q('q0'), q('q1')], stat: q('stat')
+      };
+      return bays[p.pileId];
+    }
+
+    function miniCar(mode, plate, queueNum, small, isNew) {
+      return `<div class="vcar ${mode === 'FAST' ? 'fast' : 'trickle'}${small ? ' small' : ''}${isNew ? ' drive' : ''}" title="${plate}">
+        <span class="plate">${plate}</span>
+        <svg class="caricon"><use href="#car"/></svg>
+        ${queueNum ? `<span class="qn">${queueNum}</span>` : ''}
+      </div>`;
+    }
+    function ghost(tag) { return `<div class="ghost"></div><div class="slot-tag">${tag}</div>`; }
+
+    function update(data) {
+      if (!data || !data.piles) return;
+      const waiting = data.waiting || [];
+      const currentIds = new Set();
+
+      data.piles.forEach(p => {
+        const b = bays[p.pileId] || buildBay(p);
+        if (!bays[p.pileId]) {} // already stored
+        if (!b.root.parentNode) {
+          (p.pileType === 'FAST' ? document.getElementById('fastBays') : document.getElementById('trickleBays')).appendChild(b.root);
         }
-        window.addEventListener('DOMContentLoaded', () => {
-            const el = document.getElementById('serverAddr'); if (el) el.value = serverBase();
+        // 状态
+        const cls = p.status === 'BUSY' ? 's-busy' : p.status === 'FAULT' ? 's-fault'
+          : (p.status === 'OFFLINE' || p.status === 'CLOSED') ? 's-off' : '';
+        b.root.className = 'bay ' + cls;
+
+        // 充电位
+        if (p.status === 'BUSY' && p.currentCarId) {
+          currentIds.add(p.currentCarId);
+          if (b.lastCar !== p.currentCarId) triggerDrive(b.car); // 新车驶入充电位
+          b.lastCar = p.currentCarId;
+          b.car.style.display = '';
+          b.pad.style.display = 'none';
+          b.plate.textContent = p.currentCarId;
+          b.gauge.style.width = (p.chargeProgress || 0) + '%';
+          b.pct.textContent = p.chargeProgress || 0;
+          b.cost.textContent = '¥' + F.money(p.currentCost);
+        } else {
+          b.lastCar = null;
+          b.car.style.display = 'none';
+          b.pad.style.display = '';
+          b.pad.innerHTML = p.status === 'FAULT'
+            ? `<div class="fault-tag">⚠<span>${p.faultReason || '故障停机'}</span></div>`
+            : ghost(p.status === 'OFFLINE' ? '离线' : '充电位');
+        }
+
+        // 桩前排队位
+        const queued = waiting.filter(w => w.pileId === p.pileId)
+          .sort((a, b2) => (a.queuePosition || 0) - (b2.queuePosition || 0));
+        for (let i = 0; i < M; i++) {
+          const w = queued[i];
+          if (w) currentIds.add(w.carId);
+          b.qslots[i].innerHTML = w
+            ? miniCar(w.mode, w.carId, '队位 ' + (w.queuePosition || (i + 1)), true, !shown.has(w.carId))
+            : ghost('排队位');
+        }
+
+        // 累计
+        b.stat.textContent = `${F.num(p.totalChargeCount || 0)}次 · ${F.dur(p.totalChargeDuration || 0)} · ${F.num(p.totalChargeAmount || 0, 0)}度`;
+      });
+
+      // 等候区
+      const area = waiting.filter(w => w.status === 'WAITING');
+      const lane = document.getElementById('laneCars');
+      lane.innerHTML = area.length
+        ? area.map(w => { currentIds.add(w.carId); return `<div class="spot">${miniCar(w.mode, w.carId, w.queueNum, false, !shown.has(w.carId))}</div>`; }).join('')
+        : '<div class="lane-empty">○ 等候区空闲，无车辆排队</div>';
+      document.getElementById('laneCount').textContent = `${data.waitingAreaCount || 0} / 10`;
+      // 更新"已在场"集合：下一帧只对新出现的车播放驶入动画
+      shown.clear(); currentIds.forEach(id => shown.add(id));
+
+      // 仪表
+      const total = data.piles.length;
+      const online = data.piles.filter(p => p.status !== 'FAULT' && p.status !== 'OFFLINE' && p.status !== 'CLOSED').length;
+      document.getElementById('tOnline').textContent = online;
+      document.getElementById('tTotal').textContent = total;
+      document.getElementById('tCharging').textContent = data.piles.filter(p => p.status === 'BUSY').length;
+      document.getElementById('tWaiting').textContent = data.waitingAreaCount || 0;
+      document.getElementById('tQueued').textContent = data.queuedAtPileCount || 0;
+      document.getElementById('tEnergy').textContent = F.num(data.piles.reduce((s, p) => s + (p.totalChargeAmount || 0), 0), 0);
+      document.getElementById('tRevenue').textContent = F.money(data.revenueTotal || 0);
+
+      // 计费时段
+      if (data.tariff) {
+        const t = data.tariff;
+        ['tariffChip', 'periodChip'].forEach(id => {
+          const el = document.getElementById(id);
+          el.className = 'chip ' + F.periodClass(t.period);
         });
+        document.getElementById('tariffChip').textContent = `${F.period(t.period)} ¥${F.money(t.currentPrice)}/度`;
+        document.getElementById('periodChip').textContent = `${F.period(t.period)} ¥${F.money(t.currentPrice)} · 服务费 ¥${F.money(t.serviceFee)}`;
+      }
+    }
 
-        const API = serverBase() + '/api';
-        let stompClient;
-
-        function connect() {
-            const socket = new SockJS(serverBase() + '/api/ws');
-            stompClient = Stomp.over(socket);
-            stompClient.connect({}, () => {
-                const s = document.getElementById('srvState'); if (s) { s.textContent = '已连接 ' + serverBase(); s.style.color = '#86efac'; }
-                stompClient.subscribe('/topic/status', (msg) => {
-                    const data = JSON.parse(msg.body);
-                    updateUI(data);
-                });
-            }, () => {
-                const s = document.getElementById('srvState'); if (s) { s.textContent = '连接失败：' + serverBase(); s.style.color = '#fca5a5'; }
-            });
-        }
-
-        function updateUI(data) {
-            if (!data?.piles) return;
-
-            const fast = document.getElementById('fastPiles');
-            const trickle = document.getElementById('tricklePiles');
-            fast.innerHTML = '';
-            trickle.innerHTML = '';
-
-            data.piles.forEach(p => {
-                const card = document.createElement('div');
-                const status = p.status === 'BUSY' ? 'charging' :
-                              p.status === 'FAULT' ? 'fault' : 'available';
-                const text = p.status === 'BUSY' ? '充电中' :
-                            p.status === 'FAULT' ? '故障' : '空闲';
-
-                card.className = `pile-card ${status}`;
-                card.innerHTML = `
-                    <div class="pile-header">
-                        <div class="pile-id">${p.pileId}</div>
-                        <div class="pile-status ${status}">${text}</div>
-                    </div>
-                    ${p.status === 'BUSY' && p.currentCarId ? `
-                        <div style="font-weight: 600; margin-top: 1rem;">🚗 ${p.currentCarId}</div>
-                        <div class="progress-bar"><div class="progress-fill" style="width: ${p.chargeProgress||0}%"></div></div>
-                        <div class="pile-stats">
-                            <span>${p.chargeProgress||0}%</span>
-                            <span>¥${(p.currentCost||0).toFixed(1)}</span>
-                        </div>
-                    ` : ''}
-                `;
-
-                (p.pileType === 'FAST' ? fast : trickle).appendChild(card);
-            });
-
-            const charging = data.piles.filter(p => p.status === 'BUSY').length;
-            const waiting = data.piles.reduce((s, p) => s + (p.queueLength || 0), 0);
-            document.getElementById('statCharging').textContent = charging;
-            document.getElementById('statWaiting').textContent = waiting;
-        }
-
-        document.getElementById('timeSlider').addEventListener('input', (e) => {
-            const labels = ['1x', '10x', '60x', '即时'];
-            document.getElementById('currentSpeed').textContent = labels[e.target.value - 1];
-        });
-
-        async function resetDB() {
-            if (!confirm('确定重置？')) return;
-            try {
-                await fetch(`${API}/monitor/reset`, {method: 'POST'});
-                alert('已重置');
-            } catch (e) {
-                alert('失败');
-            }
-        }
-
-        connect();
-    </script>
+    ION.connectStatus(update);
+  </script>
 </body>
 </html>

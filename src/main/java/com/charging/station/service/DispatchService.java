@@ -149,21 +149,15 @@ public class DispatchService {
             interruptSessionAndGenerateBill(activeSession, faultPile);
         }
 
-        // 3. 获取故障队列的车辆
-        ChargingQueue faultQueue = queueMapper.getChargingQueueByPileId(pileId);
-        List<ChargingRequest> affectedRequests = faultQueue.drain();
-        queueMapper.updateChargingQueue(faultQueue);
+        // 3. 获取故障桩排队区中尚未开始充电的车辆。
+        //    必须从 DB 实查：queueMapper.getChargingQueueByPileId 不会加载 requests 列表，
+        //    faultQueue.drain() 恒返回空，导致排队车辆被遗弃（既往缺陷）。
+        List<ChargingRequest> affectedRequests = queuedRequestsAtPile(pileId);
+        resetPileQueueLength(pileId);
 
-        // 4. 将受影响车辆重新加入等候区（优先）
-        for (ChargingRequest request : affectedRequests) {
-            request.moveToWaiting();
-            requestMapper.updateRequestStatus(request);
-            requestMapper.updateVehicleState(request.getCarId(), CarState.WAITING.name());
-
-            WaitingQueue waitingQueue = queueMapper.getWaitingQueue(request.getRequestMode());
-            waitingQueue.enqueueFront(List.of(request));
-            queueMapper.updateWaitingQueue(waitingQueue);
-        }
+        // 4. 受影响车辆按原相对顺序优先迁回等候区。其 requestTime 早于新到车辆，
+        //    dispatchWhenEmptySlot 按 requestTime 升序重新分配时自然优先于等候区其他车辆。
+        requeueToWaiting(affectedRequests, RequestMode.fromString(faultPile.getPileType()));
 
         // 5. 记录调度并触发重新调度
         recordDispatchRaw("FAULT_PRIORITY", "pile=" + pileId + ", requeued=" + affectedRequests.size(), affectedRequests.size());
@@ -190,35 +184,25 @@ public class DispatchService {
             interruptSessionAndGenerateBill(activeSession, faultPile);
         }
 
-        // 3. 获取故障队列车辆
-        ChargingQueue faultQueue = queueMapper.getChargingQueueByPileId(pileId);
-        List<ChargingRequest> affectedRequests = faultQueue.drain();
-        queueMapper.updateChargingQueue(faultQueue);
-
-        // 4. 收集同类型其他桩的未充电车辆
+        // 3. 获取故障桩排队区中尚未开始充电的车辆（从 DB 实查，原因同优先级调度）
         RequestMode mode = RequestMode.fromString(faultPile.getPileType());
+        List<ChargingRequest> affectedRequests = new ArrayList<>(queuedRequestsAtPile(pileId));
+        resetPileQueueLength(pileId);
+
+        // 4. 收集同类型其他桩排队区中尚未开始充电的车辆（正在充电的车不动）
         List<ChargingPile> sameModePiles = pileMapper.getAllChargingPiles().stream()
                 .filter(p -> !p.getPileId().equals(pileId) && p.getPileType().equals(faultPile.getPileType()))
                 .collect(Collectors.toList());
 
         for (ChargingPile pile : sameModePiles) {
-            ChargingQueue queue = queueMapper.getChargingQueueByPileId(pile.getPileId());
-            List<ChargingRequest> queuedRequests = queue.drain();
-            affectedRequests.addAll(queuedRequests);
-            queueMapper.updateChargingQueue(queue);
+            affectedRequests.addAll(queuedRequestsAtPile(pile.getPileId()));
+            resetPileQueueLength(pile.getPileId());
         }
 
-        // 5. 按时间顺序排序并重新入队
-        affectedRequests.sort((a, b) -> a.getRequestTime().compareTo(b.getRequestTime()));
-
-        WaitingQueue waitingQueue = queueMapper.getWaitingQueue(mode);
-        for (ChargingRequest request : affectedRequests) {
-            request.moveToWaiting();
-            requestMapper.updateRequestStatus(request);
-            requestMapper.updateVehicleState(request.getCarId(), CarState.WAITING.name());
-            waitingQueue.enqueue(request);
-        }
-        queueMapper.updateWaitingQueue(waitingQueue);
+        // 5. 同类型未充电车辆合并后按提交时间（排队号）顺序重排，迁回等候区
+        affectedRequests.sort(Comparator.comparing(ChargingRequest::getRequestTime,
+                Comparator.nullsLast(Comparator.naturalOrder())));
+        requeueToWaiting(affectedRequests, mode);
 
         // 6. 记录调度并触发重新调度
         recordDispatchRaw("FAULT_TIME_ORDER", "pile=" + pileId + ", requeued=" + affectedRequests.size(), affectedRequests.size());
@@ -245,6 +229,44 @@ public class DispatchService {
 
         return "充电桩恢复并重新调度完成";
     }
+
+    // ============ 故障调度公共辅助 ============
+
+    /** 取某桩排队区中尚未开始充电（QUEUED_AT_PILE / CALLED）的请求（从 DB 实查） */
+    private List<ChargingRequest> queuedRequestsAtPile(String pileId) {
+        return requestMapper.getRequestsByPileId(pileId).stream()
+                .filter(r -> r.getRequestStatus() == CarState.QUEUED_AT_PILE
+                        || r.getRequestStatus() == CarState.CALLED)
+                .collect(Collectors.toList());
+    }
+
+    /** 清零某充电桩排队区计数（正在充电的车不计入该计数） */
+    private void resetPileQueueLength(String pileId) {
+        ChargingQueue q = queueMapper.getChargingQueueByPileId(pileId);
+        if (q != null) {
+            q.setCurrentLength(0);
+            queueMapper.updateChargingQueue(q);
+        }
+    }
+
+    /** 将受影响车辆迁回等候区（置 WAITING、同步车辆状态、等候区计数 +N），随后由 dispatchWhenEmptySlot 重新分配 */
+    private void requeueToWaiting(List<ChargingRequest> affected, RequestMode mode) {
+        if (affected == null || affected.isEmpty()) {
+            return;
+        }
+        for (ChargingRequest request : affected) {
+            request.moveToWaiting();
+            requestMapper.updateRequestStatus(request);
+            requestMapper.updateVehicleState(request.getCarId(), CarState.WAITING.name());
+        }
+        WaitingQueue waitingQueue = queueMapper.getWaitingQueue(mode);
+        if (waitingQueue != null) {
+            waitingQueue.setQueueLength(waitingQueue.getQueueLength() + affected.size());
+            queueMapper.updateWaitingQueue(waitingQueue);
+        }
+    }
+
+    // ============ 中断会话并生成账单 ============
 
     /**
      * 中断会话并生成账单（私有方法）

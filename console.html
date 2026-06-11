@@ -1,446 +1,325 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>控制台 - 充电桩系统</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-            min-height: 100vh;
-            padding: 2rem;
-            color: white;
-        }
-        .container { max-width: 1600px; margin: 0 auto; }
-        .header {
-            background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
-            padding: 2rem;
-            border-radius: 20px;
-            margin-bottom: 2rem;
-            text-align: center;
-            box-shadow: 0 20px 60px rgba(139,92,246,0.3);
-        }
-        .header h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
-        .main-grid {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 2rem;
-        }
-        .card {
-            background: rgba(255,255,255,0.05);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 20px;
-            padding: 2rem;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
-        .piles-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-        .pile-card {
-            background: rgba(255,255,255,0.1);
-            border: 2px solid rgba(255,255,255,0.2);
-            border-radius: 12px;
-            padding: 1.25rem;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .pile-card:hover {
-            transform: translateY(-2px);
-            background: rgba(255,255,255,0.15);
-            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-        }
-        .pile-card.charging {
-            border-color: #10b981;
-            background: rgba(16,185,129,0.15);
-        }
-        .pile-card.fault {
-            border-color: #ef4444;
-            background: rgba(239,68,68,0.15);
-        }
-        .pile-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 0.75rem;
-        }
-        .pile-id {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: white;
-        }
-        .pile-status {
-            padding: 0.25rem 0.75rem;
-            border-radius: 12px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-        .pile-status.charging { background: #10b981; color: white; }
-        .pile-status.available { background: #3b82f6; color: white; }
-        .pile-status.fault { background: #ef4444; color: white; }
-        .control-section {
-            margin-bottom: 2rem;
-        }
-        .control-section h3 {
-            margin-bottom: 1rem;
-            font-size: 1.125rem;
-            color: white;
-        }
-        .slider {
-            width: 100%;
-            height: 6px;
-            border-radius: 3px;
-            background: rgba(255,255,255,0.2);
-            outline: none;
-            -webkit-appearance: none;
-        }
-        .slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #8b5cf6, #6366f1);
-            cursor: pointer;
-            box-shadow: 0 4px 12px rgba(139,92,246,0.5);
-        }
-        .speed-display {
-            text-align: center;
-            padding: 1.25rem;
-            background: rgba(139,92,246,0.15);
-            border-radius: 12px;
-            margin-top: 1rem;
-            border: 1px solid rgba(139,92,246,0.3);
-        }
-        .speed-value {
-            font-size: 2rem;
-            font-weight: 800;
-            color: #8b5cf6;
-        }
-        .btn-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 0.5rem;
-            margin-bottom: 0.5rem;
-        }
-        .btn {
-            padding: 0.75rem;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-size: 0.875rem;
-        }
-        .btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        }
-        .btn-warning {
-            background: linear-gradient(135deg, #f59e0b, #d97706);
-            color: white;
-        }
-        .btn-success {
-            background: linear-gradient(135deg, #10b981, #059669);
-            color: white;
-        }
-        .btn-danger {
-            background: linear-gradient(135deg, #ef4444, #dc2626);
-            color: white;
-        }
-        .btn-primary {
-            background: linear-gradient(135deg, #8b5cf6, #6366f1);
-            color: white;
-        }
-        .stat-grid {
-            display: grid;
-            gap: 0.75rem;
-        }
-        .stat-item {
-            padding: 1rem;
-            background: rgba(255,255,255,0.05);
-            border-radius: 8px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .stat-value {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: #8b5cf6;
-        }
-        .log-container {
-            background: rgba(0,0,0,0.4);
-            border-radius: 12px;
-            padding: 1rem;
-            max-height: 300px;
-            overflow-y: auto;
-            font-family: 'SF Mono', monospace;
-            font-size: 0.8125rem;
-        }
-        .log-line {
-            padding: 0.25rem 0;
-            color: #94a3b8;
-        }
-        .log-line.info { color: #38bdf8; }
-        .log-line.success { color: #22c55e; }
-        .log-line.error { color: #ef4444; }
-        .log-line.warning { color: #f59e0b; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>运维控制台 · 智能充电桩调度计费系统</title>
+  <link rel="stylesheet" href="app.css">
+  <style>
+    .ops{ display:grid; grid-template-columns:1.35fr 1fr; gap:18px; align-items:start; }
+    @media (max-width:1024px){ .ops{ grid-template-columns:1fr; } }
+    .stations{ display:grid; grid-template-columns:1fr 1fr; gap:11px; }
+    @media (max-width:560px){ .stations{ grid-template-columns:1fr; } }
+    .minibay{ display:flex; align-items:center; gap:11px; padding:11px 12px; border:1px solid var(--line); border-radius:13px;
+      background:linear-gradient(90deg,rgba(255,255,255,.03),rgba(255,255,255,.008)); cursor:pointer; transition:all .2s; position:relative; }
+    .minibay:hover{ border-color:var(--line-3); transform:translateY(-2px); }
+    .minibay.s-busy{ border-color:rgba(65,224,140,.3); }
+    .minibay.s-fault{ border-color:rgba(255,101,119,.36); background:linear-gradient(90deg,rgba(255,101,119,.06),transparent); }
+    .mpost{ width:42px; flex:0 0 42px; height:52px; border-radius:9px; background:linear-gradient(180deg,#17262e,#0b141a); border:1px solid var(--line-2);
+      display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; position:relative; }
+    .mpost b{ font-family:var(--mono); font-size:14px; color:var(--energy); }
+    .mpost .led{ position:absolute; top:-3px; right:-3px; width:7px; height:7px; border-radius:50%; background:var(--text-mute); }
+    .minibay.s-busy .mpost .led{ background:var(--live); box-shadow:var(--glow-live); animation:pulse 1.6s infinite; }
+    .minibay.s-fault .mpost .led{ background:var(--rose); box-shadow:var(--glow-rose); animation:pulse 1.1s infinite; }
+    .minfo{ min-width:0; flex:1; }
+    .minfo .mt{ font-family:var(--mono); font-size:10px; color:var(--text-mute); display:flex; align-items:center; gap:7px; justify-content:space-between; }
+    .minfo .mb{ margin-top:6px; font-size:12.5px; color:var(--text-dim); display:flex; align-items:center; gap:7px; min-height:20px; }
+    .minfo .mb .caricon{ width:34px; height:17px; color:var(--blue); }
+    .minfo .mb.fast .caricon{ color:var(--energy); } .minfo .mb.trickle .caricon{ color:var(--violet); }
+    .preset{ display:grid; grid-template-columns:repeat(5,1fr); gap:7px; }
+    .preset .btn{ padding:9px 0; font-family:var(--mono); }
+    .preset .btn.on{ background:linear-gradient(135deg,var(--energy),var(--energy-2)); color:var(--energy-ink); border-color:transparent; }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div id="srvBar" style="margin-bottom:1rem;padding:.6rem 1rem;background:rgba(0,0,0,.28);border-radius:10px;display:flex;gap:.5rem;align-items:center;font-size:.85rem;color:#fff;flex-wrap:wrap;">
-            <span>🌐 服务器地址</span>
-            <input id="serverAddr" placeholder="如 192.168.1.10:8080 或 http://host:8080" style="flex:1;min-width:220px;padding:.45rem .6rem;border-radius:8px;border:1px solid #cbd5e1;color:#1e293b;">
-            <button onclick="applyServer()" style="padding:.45rem 1.1rem;border:none;border-radius:8px;background:#8b5cf6;color:#fff;font-weight:700;cursor:pointer;">连接</button>
-            <span id="srvState" style="opacity:.9;"></span>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="car" viewBox="0 0 64 32">
+      <path d="M4 22 Q4 15 11 14 L18 14 Q22 6 31 6 L40 6 Q49 7 53 14 L58 15 Q60 16 60 21 L60 23 Q60 25 57 25 L7 25 Q4 25 4 22 Z" fill="currentColor"/>
+      <path d="M21 13 L26 8.5 L38 8.5 Q43 9 46 13 Z" fill="rgba(3,12,14,.55)"/>
+      <circle cx="18" cy="25" r="4.4" fill="#050c0f"/><circle cx="47" cy="25" r="4.4" fill="#050c0f"/>
+    </symbol>
+  </svg>
+
+  <div class="page">
+    <header class="cmdbar">
+      <div class="cmd-brand">
+        <div class="brand-mark">⚙</div>
+        <div>
+          <div class="brand-name">运维控制台</div>
+          <div class="brand-sub">Ops Console</div>
         </div>
-        <div class="header">
-            <h1>🛠️ 测试控制台</h1>
-            <p>系统测试 · 故障模拟 · 数据管理</p>
+      </div>
+      <nav class="cmd-nav">
+        <a class="cmd-link" href="admin.html">调度盘</a>
+        <a class="cmd-link active">运维控制台</a>
+        <a class="cmd-link" href="client.html">用户端</a>
+      </nav>
+      <div class="topbar-actions">
+        <span class="live-badge" id="liveBadge"><span class="dot"></span><span class="clock" id="clock">--:--:--</span></span>
+        <div class="srv">
+          <div class="srv-pill" title="服务器连接"><span class="dot"></span><span id="srvText">连接中</span></div>
+          <div class="srv-panel" id="srvPanel">
+            <span class="mute" style="font-size:12px;">🌐 服务器</span>
+            <input class="input mono" id="srvInput" style="width:210px;padding:8px 12px;" placeholder="192.168.1.10:8080">
+            <button class="btn btn-primary btn-sm" onclick="ION.applyServer()">连接</button>
+          </div>
         </div>
+      </div>
+    </header>
 
-        <div class="main-grid">
-            <!-- 监控区 -->
-            <div class="card">
-                <h2 style="margin-bottom: 1.5rem;">⚡ 充电桩监控</h2>
+    <div class="ops">
+      <!-- 左：监控 + 日志 -->
+      <div class="col">
+        <section class="card rise" style="--d:0">
+          <div class="section-head">
+            <div class="section-title"><span class="bar"></span>充电桩监控</div>
+            <div class="section-hint">点击桩切换 故障 / 恢复</div>
+          </div>
+          <div class="stations" id="stations"></div>
+        </section>
 
-                <h3 style="font-size: 1rem; color: rgba(255,255,255,0.7); margin-bottom: 1rem;">快充区</h3>
-                <div class="piles-grid" id="fastPiles"></div>
+        <section class="card rise" style="--d:1">
+          <div class="section-head">
+            <div class="section-title"><span class="bar"></span>系统日志</div>
+            <button class="btn btn-ghost btn-sm" onclick="clearLog()">清空</button>
+          </div>
+          <div class="log" id="log"></div>
+        </section>
+      </div>
 
-                <h3 style="font-size: 1rem; color: rgba(255,255,255,0.7); margin-bottom: 1rem; margin-top: 1.5rem;">慢充区</h3>
-                <div class="piles-grid" id="tricklePiles"></div>
+      <!-- 右：控制 -->
+      <div class="col">
+        <section class="card rise" style="--d:1">
+          <div class="section-head"><div class="section-title"><span class="bar"></span>故障调度策略</div></div>
+          <select class="input" id="strategy" style="margin-bottom:14px;">
+            <option value="priority">🔺 优先级调度（故障车辆优先重排）</option>
+            <option value="timeorder">⏱ 时间顺序调度（全体重排）</option>
+          </select>
+          <div class="field-label">快捷故障注入</div>
+          <div class="row wrap" style="gap:8px;margin-bottom:12px;">
+            <button class="btn btn-warn btn-sm" onclick="setFault('P_F1')">F1 故障</button>
+            <button class="btn btn-warn btn-sm" onclick="setFault('P_F2')">F2 故障</button>
+            <button class="btn btn-warn btn-sm" onclick="setFault('P_T1')">T1 故障</button>
+            <button class="btn btn-warn btn-sm" onclick="setFault('P_T2')">T2 故障</button>
+            <button class="btn btn-warn btn-sm" onclick="setFault('P_T3')">T3 故障</button>
+          </div>
+          <button class="btn btn-success btn-block" onclick="recoverAll()">恢复全部充电桩</button>
+        </section>
 
-                <!-- 日志 -->
-                <div style="margin-top: 2rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                        <h3 style="margin: 0;">📝 系统日志</h3>
-                        <button class="btn btn-primary" onclick="clearLogs()" style="padding: 0.5rem 1rem; font-size: 0.75rem;">清空</button>
-                    </div>
-                    <div class="log-container" id="logContainer"></div>
-                </div>
-            </div>
+        <section class="card rise" style="--d:2">
+          <div class="section-head">
+            <div class="section-title"><span class="bar"></span>定时故障 · 验收用</div>
+            <span class="section-hint">倒计时注入 → 自动恢复</span>
+          </div>
+          <div class="row" style="gap:8px;margin-bottom:10px;">
+            <select class="input" id="schedPile" style="flex:1;">
+              <option value="P_F1">F1</option><option value="P_F2">F2</option>
+              <option value="P_T1">T1</option><option value="P_T2">T2</option><option value="P_T3">T3</option>
+            </select>
+            <select class="input" id="schedStrategy" style="flex:1.5;">
+              <option value="priority">优先级调度</option><option value="timeorder">时间顺序调度</option>
+            </select>
+          </div>
+          <div class="row" style="gap:8px;margin-bottom:12px;">
+            <div class="grow"><div class="field-label" style="margin-bottom:5px;">故障倒计时 <span class="hint">秒</span></div><input class="input mono" id="schedFault" type="number" value="10" min="0"></div>
+            <div class="grow"><div class="field-label" style="margin-bottom:5px;">持续后恢复 <span class="hint">秒·0=不恢复</span></div><input class="input mono" id="schedRecover" type="number" value="20" min="0"></div>
+          </div>
+          <button class="btn btn-warn btn-block" style="margin-bottom:8px;" onclick="scheduleFault()">⏱ 安排定时故障</button>
+          <button class="btn btn-ghost btn-block" onclick="cancelScheduled()">取消全部定时</button>
+          <div id="schedList" class="mono" style="font-size:11.5px;margin-top:11px;line-height:1.8;color:var(--amber);"></div>
+        </section>
 
-            <!-- 控制区 -->
-            <div style="display: flex; flex-direction: column; gap: 1.5rem;">
-                <!-- 时间控制 -->
-                <div class="card">
-                    <div class="control-section" style="margin: 0;">
-                        <h3>⏱ 时间流速</h3>
-                        <input type="range" class="slider" id="timeSlider" min="1" max="4" value="2">
-                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: rgba(255,255,255,0.5); margin-top: 0.5rem;">
-                            <span>1x</span><span>10x</span><span>60x</span><span>即时</span>
-                        </div>
-                        <div class="speed-display">
-                            <div class="speed-value" id="currentSpeed">10x</div>
-                        </div>
-                    </div>
-                </div>
+        <section class="card rise" style="--d:2">
+          <div class="section-head">
+            <div class="section-title"><span class="bar"></span>扩展调度 · 2.8</div>
+            <span class="section-hint">最小化总完成时长</span>
+          </div>
+          <div class="row" style="gap:8px;margin-bottom:10px;">
+            <select class="input" id="batchMode" style="flex:2;"><option value="FAST">快充</option><option value="TRICKLE">慢充</option></select>
+            <input class="input mono" id="batchSlots" type="number" value="2" min="1" max="6" style="flex:1;" title="空位数">
+          </div>
+          <button class="btn btn-ghost btn-block" style="margin-bottom:8px;" onclick="batchSingle()">单次批量调度（指定模式+空位）</button>
+          <button class="btn btn-ghost btn-block" onclick="batchFull()">全站批量调度</button>
+        </section>
 
-                <!-- 故障模拟 -->
-                <div class="card">
-                    <div class="control-section" style="margin: 0;">
-                        <h3>🔧 故障调度策略</h3>
-                        <select id="faultStrategy" style="width: 100%; padding: 0.75rem; margin-bottom: 1rem; border-radius: 8px; border: 2px solid #6366f1; font-size: 1rem;">
-                            <option value="priority">🔺 优先级调度（故障车辆优先）</option>
-                            <option value="timeorder">⏱️ 时间顺序调度（重排所有车辆）</option>
-                        </select>
-                        <h3>⚡ 快捷操作</h3>
-                        <div class="btn-grid">
-                            <button class="btn btn-warning" onclick="setFault('P_F1')">F1故障</button>
-                            <button class="btn btn-warning" onclick="setFault('P_F2')">F2故障</button>
-                            <button class="btn btn-warning" onclick="setFault('P_T1')">T1故障</button>
-                            <button class="btn btn-warning" onclick="setFault('P_T2')">T2故障</button>
-                        </div>
-                        <button class="btn btn-success" style="width: 100%;" onclick="recoverAll()">恢复全部</button>
-                    </div>
-                </div>
+        <section class="card rise" style="--d:3">
+          <div class="section-head">
+            <div class="section-title"><span class="bar"></span>仿真时间流速</div>
+            <span class="chip flat mono" id="speedNow">120×</span>
+          </div>
+          <div class="preset" id="speedPreset">
+            <button class="btn btn-ghost" data-v="10">10×</button>
+            <button class="btn btn-ghost" data-v="30">30×</button>
+            <button class="btn btn-ghost" data-v="60">60×</button>
+            <button class="btn btn-ghost" data-v="120">120×</button>
+            <button class="btn btn-ghost" data-v="240">240×</button>
+          </div>
+          <p class="mute" style="font-size:11px;margin-top:10px;">1 真实秒 = N 仿真秒，调整后立即生效（验收按 1:10 设为 10×）。</p>
+        </section>
 
-                <!-- 数据管理 -->
-                <div class="card">
-                    <div class="control-section" style="margin: 0;">
-                        <h3>🗄️ 数据管理</h3>
-                        <button class="btn btn-danger" style="width: 100%;" onclick="resetDB()">🗑️ 重置数据库</button>
-                    </div>
-                </div>
+        <section class="card rise" style="--d:4">
+          <div class="section-head"><div class="section-title"><span class="bar"></span>实时统计</div></div>
+          <div class="statlist">
+            <div class="statrow"><span>充电中</span><b id="sCharging" style="color:var(--live)">0</b></div>
+            <div class="statrow"><span>等候区 / 桩前</span><b id="sWaiting" style="color:var(--amber)">0 / 0</b></div>
+            <div class="statrow"><span>故障桩</span><b id="sFault" style="color:var(--rose)">0</b></div>
+            <div class="statrow"><span>累计充电量 · 营收</span><b id="sEnergy" style="color:var(--energy)">0 度</b></div>
+          </div>
+        </section>
 
-                <!-- 统计 -->
-                <div class="card">
-                    <div class="control-section" style="margin: 0;">
-                        <h3>📊 实时统计</h3>
-                        <div class="stat-grid">
-                            <div class="stat-item">
-                                <span>充电中</span>
-                                <span class="stat-value" id="statCharging">0</span>
-                            </div>
-                            <div class="stat-item">
-                                <span>等待中</span>
-                                <span class="stat-value" id="statWaiting">0</span>
-                            </div>
-                            <div class="stat-item">
-                                <span>故障桩</span>
-                                <span class="stat-value" id="statFault">0</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <section class="card rise" style="--d:5">
+          <div class="section-head"><div class="section-title"><span class="bar"></span>数据管理</div></div>
+          <button class="btn btn-danger btn-block" onclick="resetDB()">🗑 重置充电数据（清场）</button>
+          <p class="mute" style="font-size:11px;margin-top:10px;">清空充电请求/会话/账单并复位充电桩为空闲，保留桩与车辆配置。</p>
+        </section>
+      </div>
     </div>
+  </div>
 
-    <script src="lib/sockjs.min.js"></script>
-    <script src="lib/stomp.min.js"></script>
-    <script>
-        const SRV_KEY = 'serverBase';
-        function serverBase() { return localStorage.getItem(SRV_KEY) || 'http://localhost:8080'; }
-        function applyServer() {
-            let v = (document.getElementById('serverAddr').value || '').trim();
-            if (v) { if (!/^https?:\/\//i.test(v)) v = 'http://' + v; localStorage.setItem(SRV_KEY, v.replace(/\/+$/, '')); }
-            else { localStorage.removeItem(SRV_KEY); }
-            location.reload();
-        }
-        window.addEventListener('DOMContentLoaded', () => {
-            const el = document.getElementById('serverAddr'); if (el) el.value = serverBase();
-        });
+  <script src="lib/sockjs.min.js"></script>
+  <script src="lib/stomp.min.js"></script>
+  <script src="app.js"></script>
+  <script>
+    const F = ION.fmt;
+    ION.initServerBar();
+    ION.startClock('clock');
 
-        const API = serverBase() + '/api';
-        let stompClient;
+    function station(p) {
+      const cls = p.status === 'BUSY' ? 's-busy' : p.status === 'FAULT' ? 's-fault'
+        : (p.status === 'OFFLINE' || p.status === 'CLOSED') ? 's-off' : '';
+      const pill = p.status === 'BUSY' ? '<span class="pill live"><span class="dot"></span>充电</span>'
+        : p.status === 'FAULT' ? '<span class="pill fault"><span class="dot"></span>故障</span>'
+        : p.queueLength > 0 ? `<span class="pill wait"><span class="dot"></span>排队${p.queueLength}</span>`
+        : '<span class="pill idle"><span class="dot"></span>空闲</span>';
+      const mode = p.pileType === 'FAST' ? 'fast' : 'trickle';
+      let body;
+      if (p.status === 'BUSY' && p.currentCarId) {
+        body = `<div class="mb ${mode}"><svg class="caricon"><use href="#car"/></svg><b class="mono">${p.currentCarId}</b> · ${p.chargeProgress || 0}%</div>`;
+      } else if (p.status === 'FAULT') {
+        body = `<div class="mb" style="color:#ffb3bc;">⚠ ${p.faultReason || '已停机'}</div>`;
+      } else {
+        body = `<div class="mb">${p.queueLength > 0 ? p.queueLength + ' 辆排队' : '空闲 · 点击注入故障'}</div>`;
+      }
+      return `<div class="minibay ${cls}" onclick="togglePile('${p.pileId}','${p.status}')">
+        <div class="mpost"><b>${p.pileNo}</b><span class="led"></span></div>
+        <div class="minfo">
+          <div class="mt"><span>${F.pileTypeMeta(p.pileType, p.ratedPower)}</span>${pill}</div>
+          ${body}
+        </div>
+      </div>`;
+    }
 
-        function connect() {
-            const socket = new SockJS(serverBase() + '/api/ws');
-            stompClient = Stomp.over(socket);
-            stompClient.connect({}, () => {
-                log('WebSocket 连接成功 ' + serverBase(), 'success');
-                const s = document.getElementById('srvState'); if (s) { s.textContent = '已连接 ' + serverBase(); s.style.color = '#86efac'; }
-                stompClient.subscribe('/topic/status', (msg) => {
-                    const data = JSON.parse(msg.body);
-                    updateUI(data);
-                });
-            }, () => {
-                log('WebSocket 连接失败 ' + serverBase(), 'error');
-                const s = document.getElementById('srvState'); if (s) { s.textContent = '连接失败：' + serverBase(); s.style.color = '#fca5a5'; }
-            });
-        }
+    function update(data) {
+      if (!data || !data.piles) return;
+      document.getElementById('stations').innerHTML = data.piles.map(station).join('');
+      document.getElementById('sCharging').textContent = data.piles.filter(p => p.status === 'BUSY').length;
+      document.getElementById('sWaiting').textContent = `${data.waitingAreaCount || 0} / ${data.queuedAtPileCount || 0}`;
+      document.getElementById('sFault').textContent = data.piles.filter(p => p.status === 'FAULT').length;
+      const energy = data.piles.reduce((s, p) => s + (p.totalChargeAmount || 0), 0);
+      document.getElementById('sEnergy').textContent = `${F.num(energy, 0)} 度 · ¥${F.money(data.revenueTotal || 0)}`;
+      if (data.simSpeed) {
+        const v = Math.round(data.simSpeed);
+        document.getElementById('speedNow').textContent = v + '×';
+        document.querySelectorAll('#speedPreset .btn').forEach(b => b.classList.toggle('on', +b.dataset.v === v));
+      }
+    }
 
-        function updateUI(data) {
-            if (!data?.piles) return;
+    async function togglePile(pileId, status) {
+      if (status === 'FAULT') { await ION.post('/dispatch/recover', { pileId }); log(`${pileId} 已恢复`, 'success'); }
+      else setFault(pileId);
+    }
+    async function setFault(pileId) {
+      const strategy = document.getElementById('strategy').value;
+      try {
+        const r = await ION.post('/dispatch/fault/' + strategy, { pileId });
+        log(`${pileId} 故障调度完成 · ${strategy === 'priority' ? '优先级' : '时间顺序'}策略`, 'warning');
+        if (r && r.data) log('› ' + r.data, 'info');
+      } catch (e) { log('故障调度失败: ' + e.message, 'error'); }
+    }
+    async function recoverAll() {
+      for (const p of ['P_F1', 'P_F2', 'P_T1', 'P_T2', 'P_T3']) { try { await ION.post('/dispatch/recover', { pileId: p }); } catch (e) {} }
+      log('所有充电桩已恢复', 'success');
+    }
+    async function batchSingle() {
+      const mode = document.getElementById('batchMode').value;
+      const emptySlots = document.getElementById('batchSlots').value || 2;
+      try { logPlan('单次批量调度', await ION.post('/dispatch/batch/single', { mode, emptySlots })); }
+      catch (e) { log('调度失败: ' + e.message, 'error'); }
+    }
+    async function batchFull() {
+      try { logPlan('全站批量调度', await ION.post('/dispatch/batch/full')); }
+      catch (e) { log('调度失败: ' + e.message, 'error'); }
+    }
+    function logPlan(title, r) {
+      if (!r || !r.success) { log(`${title}失败：${(r && r.message) || '无可调度车辆'}`, 'error'); return; }
+      const p = r.data;
+      if (!p || !p.assignments || !p.assignments.length) { log(`${title}：无可分配车辆`, 'warning'); return; }
+      log(`${title}完成 · 模式 ${p.mode} · 总完成时长 ${(+p.totalDuration).toFixed(2)}h · ${p.assignments.length} 辆`, 'success');
+      p.assignments.forEach(a => log(`› ${a.carId} → ${a.pileId} 队位${a.position} · 完成≈${(+a.completionHours).toFixed(2)}h`, 'info'));
+    }
+    document.getElementById('speedPreset').addEventListener('click', async e => {
+      const btn = e.target.closest('.btn'); if (!btn) return;
+      try {
+        const r = await ION.post('/monitor/sim-speed', { value: btn.dataset.v });
+        log(r.success ? `仿真倍速调整为 ${btn.dataset.v}×` : (r.message || '设置失败'), r.success ? 'info' : 'error');
+      } catch (e) { log('设置倍速失败', 'error'); }
+    });
+    async function resetDB() {
+      if (!confirm('确定重置？将清空所有充电请求/会话/账单并复位充电桩。')) return;
+      try {
+        const r = await ION.post('/monitor/reset');
+        log(r.success ? '数据库已重置 · 充电桩复位为空闲' : (r.message || '重置失败'), r.success ? 'success' : 'error');
+      } catch (e) { log('重置失败', 'error'); }
+    }
 
-            const fast = document.getElementById('fastPiles');
-            const trickle = document.getElementById('tricklePiles');
-            fast.innerHTML = '';
-            trickle.innerHTML = '';
+    // ===== 定时故障（验收用）=====
+    const scheduled = {}; // pileId -> { faultAt, recoverAt, strategy }
+    async function scheduleFault() {
+      const pileId = document.getElementById('schedPile').value;
+      const strategy = document.getElementById('schedStrategy').value;
+      const fd = Math.max(0, +document.getElementById('schedFault').value || 0);
+      const rd = Math.max(0, +document.getElementById('schedRecover').value || 0);
+      try {
+        const r = await ION.post('/dispatch/fault/schedule', { pileId, strategy, faultDelaySec: fd, recoverDelaySec: rd });
+        if (r.success) {
+          const now = Date.now();
+          scheduled[pileId] = { faultAt: now + fd * 1000, recoverAt: rd > 0 ? now + (fd + rd) * 1000 : 0, strategy };
+          log(r.data || '已安排定时故障', 'warning');
+        } else log(r.message || '安排失败', 'error');
+      } catch (e) { log('安排失败', 'error'); }
+    }
+    async function cancelScheduled() {
+      try {
+        const r = await ION.post('/dispatch/fault/schedule/cancel');
+        Object.keys(scheduled).forEach(k => delete scheduled[k]);
+        log(r.success ? '已取消全部定时故障' : (r.message || '取消失败'), r.success ? 'info' : 'error');
+      } catch (e) { log('取消失败', 'error'); }
+    }
+    setInterval(() => {
+      const now = Date.now(), lines = [];
+      for (const [pid, s] of Object.entries(scheduled)) {
+        const no = pid.replace('P_', '');
+        if (s.faultAt && now < s.faultAt) lines.push(`${no}: ${Math.ceil((s.faultAt - now) / 1000)}s 后${s.strategy === 'timeorder' ? '时间顺序' : '优先级'}故障`);
+        else if (s.recoverAt && now < s.recoverAt) lines.push(`${no}: 故障中，${Math.ceil((s.recoverAt - now) / 1000)}s 后恢复`);
+        else delete scheduled[pid];
+      }
+      const el = document.getElementById('schedList');
+      if (el) el.innerHTML = lines.length ? '⏱ ' + lines.join('<br>⏱ ') : '';
+    }, 500);
 
-            data.piles.forEach(p => {
-                const card = document.createElement('div');
-                const status = p.status === 'BUSY' ? 'charging' :
-                              p.status === 'FAULT' ? 'fault' : 'available';
-                const text = p.status === 'BUSY' ? '充电' :
-                            p.status === 'FAULT' ? '故障' : '空闲';
+    function log(msg, type = 'info') {
+      const box = document.getElementById('log');
+      const d = new Date(), p = n => String(n).padStart(2, '0');
+      const line = document.createElement('div');
+      line.className = 'log-line ' + type;
+      line.innerHTML = `<span class="ts">${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}</span><span class="msg">${msg}</span>`;
+      box.insertBefore(line, box.firstChild);
+      while (box.children.length > 60) box.removeChild(box.lastChild);
+    }
+    function clearLog() { document.getElementById('log').innerHTML = ''; log('日志已清空', 'info'); }
 
-                card.className = `pile-card ${status}`;
-                card.onclick = () => toggleFault(p.pileId, p.status);
-                card.innerHTML = `
-                    <div class="pile-header">
-                        <div class="pile-id">${p.pileId}</div>
-                        <div class="pile-status ${status}">${text}</div>
-                    </div>
-                    ${p.currentCarId ? `<div style="font-size: 0.875rem; color: rgba(255,255,255,0.7);">🚗 ${p.currentCarId}</div>` : ''}
-                `;
-
-                (p.pileType === 'FAST' ? fast : trickle).appendChild(card);
-            });
-
-            const charging = data.piles.filter(p => p.status === 'BUSY').length;
-            const fault = data.piles.filter(p => p.status === 'FAULT').length;
-            const waiting = data.piles.reduce((s, p) => s + (p.queueLength || 0), 0);
-
-            document.getElementById('statCharging').textContent = charging;
-            document.getElementById('statWaiting').textContent = waiting;
-            document.getElementById('statFault').textContent = fault;
-        }
-
-        async function setFault(pileId) {
-            const strategy = document.getElementById('faultStrategy').value;
-            try {
-                const response = await fetch(`${API}/dispatch/fault/${strategy}?pileId=${pileId}`, {
-                    method: 'POST'
-                });
-                const result = await response.text();
-                log(`${pileId} 故障调度完成（${strategy === 'priority' ? '优先级' : '时间顺序'}）`, 'warning');
-            } catch (e) {
-                log('操作失败: ' + e.message, 'error');
-            }
-        }
-
-        async function toggleFault(pileId, currentStatus) {
-            if (currentStatus === 'FAULT') {
-                // 恢复
-                try {
-                    await fetch(`${API}/dispatch/recover?pileId=${pileId}`, {
-                        method: 'POST'
-                    });
-                    log(`${pileId} 已恢复`, 'success');
-                } catch (e) {
-                    log('恢复失败', 'error');
-                }
-            } else {
-                // 设置故障
-                await setFault(pileId);
-            }
-        }
-
-        async function recoverAll() {
-            const piles = ['P_F1', 'P_F2', 'P_T1', 'P_T2', 'P_T3'];
-            for (const p of piles) {
-                try {
-                    await fetch(`${API}/dispatch/recover?pileId=${p}`, {
-                        method: 'POST'
-                    });
-                } catch (e) {}
-            }
-            log('所有充电桩已恢复', 'success');
-        }
-
-        async function resetDB() {
-            if (!confirm('确定重置数据库？')) return;
-            try {
-                await fetch(`${API}/monitor/reset`, {method: 'POST'});
-                log('数据库已重置', 'success');
-            } catch (e) {
-                log('重置失败', 'error');
-            }
-        }
-
-        document.getElementById('timeSlider').addEventListener('input', (e) => {
-            const labels = ['1x', '10x', '60x', '即时'];
-            const label = labels[e.target.value - 1];
-            document.getElementById('currentSpeed').textContent = label;
-            log(`时间流速调整为 ${label}`, 'info');
-        });
-
-        function log(msg, type = 'info') {
-            const container = document.getElementById('logContainer');
-            const time = new Date().toLocaleTimeString();
-            const line = document.createElement('div');
-            line.className = `log-line ${type}`;
-            line.textContent = `[${time}] ${msg}`;
-            container.insertBefore(line, container.firstChild);
-            if (container.children.length > 50) {
-                container.removeChild(container.lastChild);
-            }
-        }
-
-        function clearLogs() {
-            document.getElementById('logContainer').innerHTML = '';
-            log('日志已清空', 'info');
-        }
-
-        connect();
-    </script>
+    ION.connectStatus(update);
+    log('运维控制台已就绪', 'success');
+  </script>
 </body>
 </html>
