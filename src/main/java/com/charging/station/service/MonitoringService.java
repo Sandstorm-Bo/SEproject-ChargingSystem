@@ -69,5 +69,8 @@ public class MonitoringService {
         maintenanceMapper.resetChargingQueues();
         maintenanceMapper.resetPiles();
         maintenanceMapper.resetVehicles();
+        // 排队号从 F1/T1 重新编号；仿真时钟（若启用）重新锚定回配置的起点，场景从头开始
+        com.charging.station.util.QueueNumberGenerator.reset();
+        com.charging.station.util.SimClock.reanchor();
     }
 }

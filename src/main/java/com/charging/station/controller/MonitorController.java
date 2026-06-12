@@ -5,6 +5,7 @@ import com.charging.station.domain.ChargingQueue;
 import com.charging.station.domain.ChargingSession;
 import com.charging.station.dto.Result;
 import com.charging.station.service.MonitoringService;
+import com.charging.station.service.StationLock;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,6 +23,10 @@ public class MonitorController {
 
     @Autowired
     private MonitoringService monitoringService;
+
+    // 重置属于全站状态变更，持全站锁与调度循环/故障注入互斥
+    @Autowired
+    private StationLock stationLock;
 
     /**
      * 查看单个充电桩状态
@@ -72,10 +77,34 @@ public class MonitorController {
     @PostMapping("/reset")
     public Result<String> resetDatabase() {
         try {
-            monitoringService.resetAll();
+            stationLock.run(() -> monitoringService.resetAll());
             return Result.success("已重置：充电请求/会话/账单已清空，充电桩复位为空闲", null);
         } catch (Exception e) {
             return Result.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 查询仿真时钟当前虚拟时刻（未启用时即真实时间）
+     * GET /api/monitor/sim-clock
+     */
+    @GetMapping("/sim-clock")
+    public Result<String> getSimClock() {
+        return Result.success((com.charging.station.util.SimClock.isEnabled() ? "SIM " : "REAL ")
+                + com.charging.station.util.SimClock.nowVirtual().toLocalTime().toString());
+    }
+
+    /**
+     * 启用仿真时钟并锚定虚拟起点（验收用，如 start=06:00 使电价时段从谷时开始）
+     * POST /api/monitor/sim-clock?start=06:00
+     */
+    @PostMapping("/sim-clock")
+    public Result<String> setSimClock(@RequestParam String start) {
+        try {
+            com.charging.station.util.SimClock.configure(java.time.LocalTime.parse(start.trim()));
+            return Result.success("仿真时钟已锚定为 " + start, null);
+        } catch (Exception e) {
+            return Result.error("时间格式应为 HH:mm，例如 06:00");
         }
     }
 

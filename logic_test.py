@@ -87,7 +87,8 @@ def test_auto_lifecycle_and_bill():
     clean_db()
     submit("T_LIFE", "FAST", 3)
     check("自动进入充电（无需手动 start）", wait_status("T_LIFE", "CHARGING"))
-    check("充满后自动结束", wait_status("T_LIFE", "FINISHED", timeout=20))
+    # 3 度 @30kW = 0.1 仿真小时；验收 1:10 倍速下需 36 真实秒，超时需覆盖 10x 与 120x 两种倍速
+    check("充满后自动结束", wait_status("T_LIFE", "FINISHED", timeout=60))
     time.sleep(1)
     bills = requests.get(f"{API}/billing/bill?carId=T_LIFE", timeout=5).json().get("data") or []
     check("自动生成账单", len(bills) >= 1)

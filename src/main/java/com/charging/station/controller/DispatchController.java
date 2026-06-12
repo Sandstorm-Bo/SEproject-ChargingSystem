@@ -5,6 +5,7 @@ import com.charging.station.dto.Result;
 import com.charging.station.enums.RequestMode;
 import com.charging.station.service.DispatchService;
 import com.charging.station.service.FaultSchedulerService;
+import com.charging.station.service.StationLock;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,6 +25,10 @@ public class DispatchController {
     @Autowired
     private FaultSchedulerService faultSchedulerService;
 
+    // 状态变更类调度操作统一持全站锁，与秒级调度循环、定时故障注入互斥
+    @Autowired
+    private StationLock stationLock;
+
     /**
      * 优先级故障调度
      * POST /api/dispatch/fault/priority
@@ -31,7 +36,7 @@ public class DispatchController {
     @PostMapping("/fault/priority")
     public Result<String> handlePileFaultByPriority(@RequestParam String pileId) {
         try {
-            String result = dispatchService.handlePileFaultByPriority(pileId);
+            String result = stationLock.call(() -> dispatchService.handlePileFaultByPriority(pileId));
             return Result.success(result);
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -45,7 +50,7 @@ public class DispatchController {
     @PostMapping("/fault/timeorder")
     public Result<String> handlePileFaultByTimeOrder(@RequestParam String pileId) {
         try {
-            String result = dispatchService.handlePileFaultByTimeOrder(pileId);
+            String result = stationLock.call(() -> dispatchService.handlePileFaultByTimeOrder(pileId));
             return Result.success(result);
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -59,7 +64,7 @@ public class DispatchController {
     @PostMapping("/recover")
     public Result<String> recoverPileAndRedispatch(@RequestParam String pileId) {
         try {
-            String result = dispatchService.recoverPileAndRedispatch(pileId);
+            String result = stationLock.call(() -> dispatchService.recoverPileAndRedispatch(pileId));
             return Result.success(result);
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -112,8 +117,8 @@ public class DispatchController {
     public Result<DispatchPlan> batchSingle(@RequestParam String mode,
                                             @RequestParam(defaultValue = "2") int emptySlots) {
         try {
-            DispatchPlan plan = dispatchService.dispatchSingleBatchMinTotalDuration(
-                    RequestMode.fromString(mode), emptySlots);
+            DispatchPlan plan = stationLock.call(() -> dispatchService.dispatchSingleBatchMinTotalDuration(
+                    RequestMode.fromString(mode), emptySlots));
             return Result.success("单次最短总时长调度完成", plan);
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -127,7 +132,7 @@ public class DispatchController {
     @PostMapping("/batch/full")
     public Result<DispatchPlan> batchFull() {
         try {
-            DispatchPlan plan = dispatchService.dispatchFullStationBatchMinTotalDuration();
+            DispatchPlan plan = stationLock.call(() -> dispatchService.dispatchFullStationBatchMinTotalDuration());
             return Result.success("全站最短总时长调度完成", plan);
         } catch (Exception e) {
             return Result.error(e.getMessage());

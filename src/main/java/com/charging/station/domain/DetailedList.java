@@ -112,8 +112,9 @@ public class DetailedList {
         detail.setPileId(session.getPileId());
         detail.setChargeAmount(session.getChargeAmount());
         detail.setChargeDuration(session.getChargeDuration());
-        detail.setStartTime(session.getStartTime());
-        detail.setEndTime(session.getEndTime());
+        // 详单展示的起止时刻换算到仿真时间轴（未启用仿真时钟时即真实时刻）
+        detail.setStartTime(com.charging.station.util.SimClock.toVirtual(session.getStartTime()));
+        detail.setEndTime(com.charging.station.util.SimClock.toVirtual(session.getEndTime()));
         detail.setChargeFee(session.getChargeFee());
         detail.setServiceFee(session.getServiceFee());
         detail.setSubtotalFee(session.getTotalFee());

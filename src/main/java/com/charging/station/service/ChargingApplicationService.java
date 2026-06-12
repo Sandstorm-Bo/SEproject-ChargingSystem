@@ -6,6 +6,7 @@ import com.charging.station.enums.CarState;
 import com.charging.station.enums.RequestMode;
 import com.charging.station.mapper.*;
 import com.charging.station.util.QueueNumberGenerator;
+import com.charging.station.util.SimClock;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -312,7 +313,8 @@ public class ChargingApplicationService {
 
         TariffPolicy policy = queueMapper.getCurrentTariffPolicy();
         if (policy != null) {
-            Double chargeFee = policy.calculateChargeFee(currentAmount, session.getStartTime().toLocalTime(), pile.getRatedPower());
+            // 电价时段按仿真时钟判定（未启用仿真时钟时即真实时间）
+            Double chargeFee = policy.calculateChargeFee(currentAmount, SimClock.toVirtual(session.getStartTime()).toLocalTime(), pile.getRatedPower());
             Double serviceFee = policy.calculateServiceFee(currentAmount);
             session.setChargeFee(chargeFee);
             session.setServiceFee(serviceFee);
@@ -383,7 +385,7 @@ public class ChargingApplicationService {
         // 3. 计算最终充电量和费用（启用跨时段分段计费）
         Double finalAmount = session.calculateCurrentAmount(pile.getRatedPower(), LocalDateTime.now());
         Double finalDuration = finalAmount / pile.getRatedPower() * 60.0; // 时长由充电量/功率推导（分钟）
-        Double chargeFee = policy.calculateChargeFee(finalAmount, session.getStartTime().toLocalTime(), pile.getRatedPower());
+        Double chargeFee = policy.calculateChargeFee(finalAmount, SimClock.toVirtual(session.getStartTime()).toLocalTime(), pile.getRatedPower());
         Double serviceFee = policy.calculateServiceFee(finalAmount);
 
         // 4. 结束会话

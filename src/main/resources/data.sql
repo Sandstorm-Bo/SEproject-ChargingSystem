@@ -21,9 +21,9 @@ INSERT INTO charging_queue (queue_id, pile_id, queue_len_m, current_length) VALU
 ('CQ_T2', 'P_T2', 2, 0),
 ('CQ_T3', 'P_T3', 2, 0);
 
--- 插入默认计费策略
+-- 插入默认计费策略（峰 1.0 / 平 0.7 / 谷 0.4 / 服务费 0.8，与验收用例一致）
 INSERT INTO tariff_policy (policy_id, status, peak_price, flat_price, valley_price, service_fee_per_kwh) VALUES
-('POLICY_DEFAULT', '已配置', 1.2, 0.7, 0.4, 0.8);
+('POLICY_DEFAULT', '已配置', 1.0, 0.7, 0.4, 0.8);
 
 -- 插入测试车辆数据
 INSERT INTO vehicle (vehicle_id, plate_number, vehicle_type, battery_capacity) VALUES

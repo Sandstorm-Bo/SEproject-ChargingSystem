@@ -24,11 +24,11 @@
         LIMIT 1
     </select>
 
-    <!-- 查询活跃的充电请求 -->
+    <!-- 查询活跃的充电请求（含已叫号 CALLED 与故障中断瞬时态 INTERRUPTED，防止重复提交申请） -->
     <select id="getActiveRequestByCarId" resultMap="ChargingRequestResultMap">
         SELECT * FROM charging_request
         WHERE car_id = #{carId}
-          AND request_status IN ('WAITING', 'QUEUED_AT_PILE', 'CHARGING')
+          AND request_status IN ('WAITING', 'QUEUED_AT_PILE', 'CALLED', 'CHARGING', 'INTERRUPTED')
         ORDER BY request_time DESC
         LIMIT 1
     </select>
@@ -51,11 +51,12 @@
         WHERE request_id = #{requestId}
     </update>
 
-    <!-- 更新充电模式 -->
+    <!-- 更新充电模式（含 request_time：改模式 = 排到新模式队列队尾） -->
     <update id="updateRequestMode">
         UPDATE charging_request
         SET request_mode = #{requestMode},
-            queue_num = #{queueNum}
+            queue_num = #{queueNum},
+            request_time = #{requestTime}
         WHERE request_id = #{requestId}
     </update>
 

@@ -133,7 +133,9 @@ public class ChargingSession {
             return 0.0;
         }
         double realSeconds = java.time.Duration.between(startTime, currentTime).toMillis() / 1000.0;
-        return realSeconds * TIME_ACCELERATION / 3600.0;
+        // MySQL TIMESTAMP 把毫秒四舍五入到秒，回读的 startTime 可能比当前时刻晚最多 0.5s，
+        // 经过时间必须钳为非负，否则充电量为负、故障中断时“剩余电量”会大于原请求量
+        return Math.max(0.0, realSeconds) * TIME_ACCELERATION / 3600.0;
     }
 
     /**

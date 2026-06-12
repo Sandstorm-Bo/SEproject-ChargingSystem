@@ -111,7 +111,7 @@ public class StatusBroadcaster {
                     pileData.put("chargedAmount", Math.round(amount * 100) / 100.0);
                     pileData.put("chargeProgress", progress);
                     if (policy != null) {
-                        double fee = policy.calculateChargeFee(amount, session.getStartTime().toLocalTime(), pile.getRatedPower())
+                        double fee = policy.calculateChargeFee(amount, com.charging.station.util.SimClock.toVirtual(session.getStartTime()).toLocalTime(), pile.getRatedPower())
                                 + policy.calculateServiceFee(amount);
                         pileData.put("currentCost", Math.round(fee * 100) / 100.0);
                     } else {
@@ -157,6 +157,8 @@ public class StatusBroadcaster {
             status.put("waitingAreaCount", waitingArea.size());
             status.put("queuedAtPileCount", atPileAll.size());
             status.put("simSpeed", ChargingSession.TIME_ACCELERATION);
+            status.put("simTime", com.charging.station.util.SimClock.nowVirtual().format(HM));
+            status.put("simClockEnabled", com.charging.station.util.SimClock.isEnabled());
             status.put("revenueTotal", Math.round(maintenanceMapper.sumRevenue() * 100) / 100.0);
 
             // 实时电价时段
@@ -166,7 +168,7 @@ public class StatusBroadcaster {
                 tariff.put("flatPrice", policy.getFlatPrice());
                 tariff.put("valleyPrice", policy.getValleyPrice());
                 tariff.put("serviceFee", policy.getServiceFeePerKwh());
-                String period = currentPeriod(now.toLocalTime());
+                String period = currentPeriod(com.charging.station.util.SimClock.nowVirtual().toLocalTime());
                 tariff.put("period", period);
                 tariff.put("currentPrice", "PEAK".equals(period) ? policy.getPeakPrice()
                         : "FLAT".equals(period) ? policy.getFlatPrice() : policy.getValleyPrice());

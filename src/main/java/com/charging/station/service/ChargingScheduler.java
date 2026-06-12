@@ -40,14 +40,21 @@ public class ChargingScheduler {
     @Autowired
     private SessionMapper sessionMapper;
 
+    @Autowired
+    private StationLock stationLock;
+
     @Scheduled(fixedRate = 1000)
     public void tick() {
-        // 1) 等候区 -> 桩排队区
-        safely(dispatchService::dispatchWhenEmptySlot);
-        // 2) 空闲桩队首 -> 开始充电
-        safely(this::startReadyCharging);
-        // 3) 充满 -> 结束并出账单
-        safely(this::finishCompletedCharging);
+        // 整个 tick 持全站锁：与故障注入/恢复、用户充电操作互斥，
+        // 避免「故障处理中断会话的同时调度循环又为同一桩开始/结束充电」之类的交错
+        stationLock.run(() -> {
+            // 1) 等候区 -> 桩排队区
+            safely(dispatchService::dispatchWhenEmptySlot);
+            // 2) 空闲桩队首 -> 开始充电
+            safely(this::startReadyCharging);
+            // 3) 充满 -> 结束并出账单
+            safely(this::finishCompletedCharging);
+        });
     }
 
     /** 对每个“可调度且空闲（无车在充）”的桩，自动启动其排队区队首车辆充电 */

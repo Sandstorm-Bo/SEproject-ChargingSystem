@@ -60,6 +60,8 @@ def wait_status(p, t, to=40):
 
 def setup():
     clean()
+    # 验收范例从 06:00（谷时）开始计费，锚定仿真时钟，避免依赖验收当天的真实时段
+    requests.post(f"{API}/monitor/sim-clock?start=06:00", timeout=5)
     requests.post(f"{API}/pile/parameters", json={"policyId": "ACC", "peakPrice": 1.0,
         "flatPrice": 0.7, "valleyPrice": 0.4, "serviceFeePerKwh": 0.8}, timeout=5)
     for pid in ["P_F1", "P_F2", "P_T1", "P_T2", "P_T3"]:

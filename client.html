@@ -236,6 +236,10 @@
             currentReq = null; prevStatus = 'FINISHED'; localStorage.removeItem('ionMyPlate'); render(); return;
           }
           if (st === 'CANCELLED' || st === 'FINISHED') { currentReq = null; localStorage.removeItem('ionMyPlate'); render(); return; }
+          // 充电中 -> 回到排队/中断：充电桩故障被重新调度，提示用户（已充部分已出账单，剩余电量自动重新排队）
+          if (prevStatus === 'CHARGING' && (st === 'WAITING' || st === 'QUEUED_AT_PILE' || st === 'CALLED' || st === 'INTERRUPTED')) {
+            ION.toast('充电桩故障：已充电量已出账单，剩余电量已重新排队', 'error');
+          }
           currentReq = r.data; prevStatus = st;
         }
       } catch (e) { /* ignore */ }
@@ -258,7 +262,7 @@
 
       // 按钮状态
       btnMod.disabled = !(st === 'WAITING');
-      btnCan.disabled = !st || st === 'FINISHED' || st === 'CANCELLED';
+      btnCan.disabled = !st || st === 'FINISHED' || st === 'CANCELLED' || st === 'INTERRUPTED';
       btnCan.textContent = st === 'CHARGING' ? '结束充电并出账单' : '取消充电';
 
       const body = document.getElementById('sessionBody');
@@ -299,6 +303,14 @@
           ['充电桩', currentReq.pileId ? (station && station.waiting.find(w => w.carId === myPlate)?.pileNo || currentReq.pileId) : '—'],
           ['请求电量', `${F.num(currentReq.requestAmount, 0)} 度`],
           ['状态', '<span class="pill idle"><span class="dot"></span>桩前排队</span>']
+        ]);
+      } else if (st === 'INTERRUPTED') {
+        // 故障中断瞬时态：后端会在同一事务内把剩余电量放回等候区，这里兜底展示，避免误显示为默认等待中
+        setBar('wait', '⚠️', '充电中断', `车辆 ${myPlate} 所在充电桩发生故障，剩余电量将自动重新排队`, false);
+        body.innerHTML = detailRows([
+          ['排队号', currentReq.queueNum || '—'], ['模式', modeTxt],
+          ['剩余电量', `${F.num(currentReq.requestAmount, 1)} 度`],
+          ['状态', '<span class="pill wait"><span class="dot"></span>故障中断 · 等待重新调度</span>']
         ]);
       } else { // WAITING
         let ahead = '';

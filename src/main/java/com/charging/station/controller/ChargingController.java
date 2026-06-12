@@ -6,6 +6,7 @@ import com.charging.station.domain.Bill;
 import com.charging.station.dto.ChargingRequestDTO;
 import com.charging.station.dto.Result;
 import com.charging.station.service.ChargingApplicationService;
+import com.charging.station.service.StationLock;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,6 +26,10 @@ public class ChargingController {
     @Autowired
     private ChargingApplicationService chargingApplicationService;
 
+    // 状态变更类操作统一持全站锁，与秒级调度循环、故障注入互斥（查询接口不加锁）
+    @Autowired
+    private StationLock stationLock;
+
     /**
      * 提交充电申请
      * POST /api/charging/request
@@ -32,7 +37,7 @@ public class ChargingController {
     @PostMapping("/request")
     public Result<ChargingRequest> submitChargingRequest(@Valid @RequestBody ChargingRequestDTO dto) {
         try {
-            ChargingRequest request = chargingApplicationService.submitChargingRequest(dto);
+            ChargingRequest request = stationLock.call(() -> chargingApplicationService.submitChargingRequest(dto));
             return Result.success("充电申请提交成功", request);
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -55,7 +60,7 @@ public class ChargingController {
                 return Result.error("缺少充电量参数");
             }
             Double amount = Double.parseDouble(amountObj.toString());
-            ChargingRequest request = chargingApplicationService.modifyAmount(carId, amount);
+            ChargingRequest request = stationLock.call(() -> chargingApplicationService.modifyAmount(carId, amount));
             return Result.success("充电量修改成功", request);
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -71,7 +76,7 @@ public class ChargingController {
         try {
             String carId = (String) params.get("carId");
             String mode = (String) params.get("mode");
-            ChargingRequest request = chargingApplicationService.modifyMode(carId, mode);
+            ChargingRequest request = stationLock.call(() -> chargingApplicationService.modifyMode(carId, mode));
             return Result.success("充电模式修改成功", request);
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -99,7 +104,7 @@ public class ChargingController {
     @PostMapping("/start")
     public Result<ChargingSession> startCharging(@RequestParam String carId, @RequestParam String pileId) {
         try {
-            ChargingSession session = chargingApplicationService.startCharging(carId, pileId);
+            ChargingSession session = stationLock.call(() -> chargingApplicationService.startCharging(carId, pileId));
             return Result.success("开始充电", session);
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -128,7 +133,7 @@ public class ChargingController {
     public Result<String> cancelRequest(@RequestBody Map<String, Object> params) {
         try {
             String carId = (String) params.get("carId");
-            chargingApplicationService.cancelChargingRequest(carId);
+            stationLock.run(() -> chargingApplicationService.cancelChargingRequest(carId));
             return Result.success("已取消充电", null);
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -142,7 +147,7 @@ public class ChargingController {
     @PostMapping("/end")
     public Result<Bill> endCharging(@RequestParam String carId, @RequestParam String pileId) {
         try {
-            Bill bill = chargingApplicationService.endCharging(carId, pileId);
+            Bill bill = stationLock.call(() -> chargingApplicationService.endCharging(carId, pileId));
             return Result.success("充电已结束，账单已生成", bill);
         } catch (Exception e) {
             return Result.error(e.getMessage());

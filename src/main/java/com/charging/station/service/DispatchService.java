@@ -2,6 +2,7 @@ package com.charging.station.service;
 
 import com.charging.station.domain.*;
 import com.charging.station.enums.CarState;
+import com.charging.station.enums.PileStatus;
 import com.charging.station.enums.RequestMode;
 import com.charging.station.mapper.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -121,9 +122,18 @@ public class DispatchService {
             CarState st = req.getRequestStatus();
             // getRequestStatus() 返回的是 CarState 枚举，必须用枚举比较；
             // 原先用 "CHARGING".equals(枚举) 恒为 false，导致等待时间恒为 0、调度退化
-            if (st == CarState.CHARGING || st == CarState.QUEUED_AT_PILE || st == CarState.CALLED) {
-                double chargingTime = req.getRequestAmount() / ratedPower;
-                totalWaitingTime += chargingTime;
+            if (st == CarState.CHARGING) {
+                // 正在充电的车按「剩余未充电量」估时；按全量估会高估等待时间，
+                // 导致新车避开快充完的桩、选错"最短完成时长"的桩
+                ChargingSession session = sessionMapper.getActiveSessionByPileId(queue.getPileId());
+                double remaining = req.getRequestAmount();
+                if (session != null) {
+                    double charged = session.calculateCurrentAmount(ratedPower, java.time.LocalDateTime.now());
+                    remaining = Math.max(0.0, session.getRequestAmount() - charged);
+                }
+                totalWaitingTime += remaining / ratedPower;
+            } else if (st == CarState.QUEUED_AT_PILE || st == CarState.CALLED) {
+                totalWaitingTime += req.getRequestAmount() / ratedPower;
             }
         }
 
@@ -136,23 +146,36 @@ public class DispatchService {
      */
     @Transactional
     public String handlePileFaultByPriority(String pileId) {
-        // 1. 标记充电桩故障
+        // 0. 幂等保护：桩已处于故障态则直接返回，防止 HTTP 与定时注入并发触发两次重排
         ChargingPile faultPile = pileMapper.getPile(pileId);
+        if (faultPile == null) {
+            throw new IllegalArgumentException("充电桩不存在: " + pileId);
+        }
+        if (faultPile.getStatus() == PileStatus.FAULT) {
+            return "充电桩已处于故障状态，无需重复调度";
+        }
+
+        // 1. 标记充电桩故障
         faultPile.markFault("优先级故障调度");
         pileMapper.updatePileState(faultPile);
         recordFault(pileId, "PRIORITY", "优先级故障调度");
 
-        // 2. 处理正在充电的车辆
+        // 2. 中断正在充电的车辆：已充部分出账单，剩余电量随其请求重新入队
+        ChargingRequest interrupted = null;
         ChargingSession activeSession = sessionMapper.getActiveSessionByPileId(pileId);
         if (activeSession != null) {
-            // 中断会话并生成账单
-            interruptSessionAndGenerateBill(activeSession, faultPile);
+            interrupted = interruptSessionAndGenerateBill(activeSession, faultPile);
         }
 
         // 3. 获取故障桩排队区中尚未开始充电的车辆。
         //    必须从 DB 实查：queueMapper.getChargingQueueByPileId 不会加载 requests 列表，
         //    faultQueue.drain() 恒返回空，导致排队车辆被遗弃（既往缺陷）。
-        List<ChargingRequest> affectedRequests = queuedRequestsAtPile(pileId);
+        //    被中断车辆排在最前（它原本已在充电，优先级最高）。
+        List<ChargingRequest> affectedRequests = new ArrayList<>();
+        if (interrupted != null) {
+            affectedRequests.add(interrupted);
+        }
+        affectedRequests.addAll(queuedRequestsAtPile(pileId));
         resetPileQueueLength(pileId);
 
         // 4. 受影响车辆按原相对顺序优先迁回等候区。其 requestTime 早于新到车辆，
@@ -172,21 +195,34 @@ public class DispatchService {
      */
     @Transactional
     public String handlePileFaultByTimeOrder(String pileId) {
-        // 1. 标记充电桩故障
+        // 0. 幂等保护：同优先级调度
         ChargingPile faultPile = pileMapper.getPile(pileId);
+        if (faultPile == null) {
+            throw new IllegalArgumentException("充电桩不存在: " + pileId);
+        }
+        if (faultPile.getStatus() == PileStatus.FAULT) {
+            return "充电桩已处于故障状态，无需重复调度";
+        }
+
+        // 1. 标记充电桩故障
         faultPile.markFault("时间顺序故障调度");
         pileMapper.updatePileState(faultPile);
         recordFault(pileId, "TIME_ORDER", "时间顺序故障调度");
 
-        // 2. 处理正在充电的车辆
+        // 2. 中断正在充电的车辆：已充部分出账单，剩余电量随其请求参与重排
+        ChargingRequest interrupted = null;
         ChargingSession activeSession = sessionMapper.getActiveSessionByPileId(pileId);
         if (activeSession != null) {
-            interruptSessionAndGenerateBill(activeSession, faultPile);
+            interrupted = interruptSessionAndGenerateBill(activeSession, faultPile);
         }
 
         // 3. 获取故障桩排队区中尚未开始充电的车辆（从 DB 实查，原因同优先级调度）
         RequestMode mode = RequestMode.fromString(faultPile.getPileType());
-        List<ChargingRequest> affectedRequests = new ArrayList<>(queuedRequestsAtPile(pileId));
+        List<ChargingRequest> affectedRequests = new ArrayList<>();
+        if (interrupted != null) {
+            affectedRequests.add(interrupted);
+        }
+        affectedRequests.addAll(queuedRequestsAtPile(pileId));
         resetPileQueueLength(pileId);
 
         // 4. 收集同类型其他桩排队区中尚未开始充电的车辆（正在充电的车不动）
@@ -222,9 +258,29 @@ public class DispatchService {
         pile.recover();
         pileMapper.updatePileState(pile);
         faultMapper.markRecovered(pileId, java.time.LocalDateTime.now());
-        recordDispatchRaw("RECOVER", "pile=" + pileId, 0);
 
-        // 2. 触发重新调度
+        // 2. 规范要求：故障恢复时若其他同类型桩队列中尚有排队车辆，需要统一重新调度。
+        //    收集同类型所有桩排队区中尚未开始充电的车辆（正在充电的车不动），
+        //    按提交时间排序迁回等候区，再由 dispatchWhenEmptySlot 含恢复桩在内重新分配。
+        RequestMode mode = RequestMode.fromString(pile.getPileType());
+        List<ChargingRequest> affectedRequests = new ArrayList<>();
+        for (ChargingPile p : pileMapper.getAllChargingPiles()) {
+            if (!p.getPileType().equals(pile.getPileType())) {
+                continue;
+            }
+            List<ChargingRequest> queued = queuedRequestsAtPile(p.getPileId());
+            if (!queued.isEmpty()) {
+                affectedRequests.addAll(queued);
+                resetPileQueueLength(p.getPileId());
+            }
+        }
+        affectedRequests.sort(Comparator.comparing(ChargingRequest::getRequestTime,
+                Comparator.nullsLast(Comparator.naturalOrder())));
+        requeueToWaiting(affectedRequests, mode);
+
+        // 3. 记录调度并触发重新调度
+        recordDispatchRaw("RECOVER", "pile=" + pileId + ", requeued=" + affectedRequests.size(),
+                affectedRequests.size());
         dispatchWhenEmptySlot();
 
         return "充电桩恢复并重新调度完成";
@@ -268,15 +324,22 @@ public class DispatchService {
 
     // ============ 中断会话并生成账单 ============
 
+    /** 剩余电量小于该阈值（度）视为已充满 */
+    private static final double REMAINING_EPSILON = 0.01;
+
     /**
-     * 中断会话并生成账单（私有方法）
+     * 中断会话并对已充部分生成账单，返回需要重新入队的请求（其 requestAmount 已更新为
+     * 剩余未充电量并持久化），由调用方放回等候区重新调度。
+     * 两种不返回请求的情况：
+     * - 故障瞬间恰好已充满（剩余 < 0.01 度）：按正常完成处理；
+     * - 请求已不处于 CHARGING（被并发结束/取消）：不重复入队。
      */
-    private void interruptSessionAndGenerateBill(ChargingSession session, ChargingPile pile) {
+    private ChargingRequest interruptSessionAndGenerateBill(ChargingSession session, ChargingPile pile) {
         // 计算当前充电量和费用（启用跨时段分段计费）
         TariffPolicy policy = queueMapper.getCurrentTariffPolicy();
         Double currentAmount = session.calculateCurrentAmount(pile.getRatedPower(), java.time.LocalDateTime.now());
         Double currentDuration = currentAmount / pile.getRatedPower() * 60.0;
-        Double chargeFee = policy.calculateChargeFee(currentAmount, session.getStartTime().toLocalTime(), pile.getRatedPower());
+        Double chargeFee = policy.calculateChargeFee(currentAmount, com.charging.station.util.SimClock.toVirtual(session.getStartTime()).toLocalTime(), pile.getRatedPower());
         Double serviceFee = policy.calculateServiceFee(currentAmount);
 
         // 中断会话
@@ -292,13 +355,28 @@ public class DispatchService {
         detail.setDetailId("DTL-INT-" + java.util.UUID.randomUUID().toString().substring(0, 8));
         billMapper.insertDetailedList(detail);
 
-        // 将被中断车辆的请求标记为故障中断，并同步车辆状态
         ChargingRequest req = requestMapper.getChargingRequest(session.getCarId());
-        if (req != null) {
-            req.interruptByFault(req.getRequestAmount());
-            requestMapper.updateRequestStatus(req);
-            requestMapper.updateVehicleState(session.getCarId(), CarState.INTERRUPTED.name());
+        if (req == null || req.getRequestStatus() != CarState.CHARGING) {
+            return null;
         }
+
+        double remaining = Math.max(0.0,
+                (req.getRequestAmount() != null ? req.getRequestAmount() : 0.0) - currentAmount);
+        remaining = Math.round(remaining * 100) / 100.0;
+        if (remaining < REMAINING_EPSILON) {
+            req.markFinished();
+            requestMapper.updateRequestStatus(req);
+            requestMapper.updateVehicleState(session.getCarId(), CarState.FINISHED.name());
+            return null;
+        }
+
+        // 标记故障中断并把请求电量改为剩余量；随后由调用方 requeueToWaiting 放回等候区。
+        // requestTime 保持原值不变，等候区按提交时间排序时它天然排在后来车辆之前（公平性保证）。
+        req.interruptByFault(remaining);
+        requestMapper.updateRequestAmount(req);
+        requestMapper.updateRequestStatus(req);
+        requestMapper.updateVehicleState(session.getCarId(), CarState.INTERRUPTED.name());
+        return req;
     }
 
     // ============ 故障 / 调度 审计记录 ============

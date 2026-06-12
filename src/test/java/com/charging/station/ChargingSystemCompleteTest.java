@@ -43,6 +43,9 @@ public class ChargingSystemCompleteTest {
 
     @BeforeEach
     public void setUp() {
+        // 每个用例前清场：测试连接的是开发库，桩可能残留 FAULT/排队数据（例如手工演示故障后未恢复），
+        // 不清场会导致用例结果取决于环境状态。清场操作在测试事务内执行，结束后自动回滚。
+        monitoringService.resetAll();
         System.out.println("\n========================================");
         System.out.println("开始新的测试用例");
         System.out.println("========================================");

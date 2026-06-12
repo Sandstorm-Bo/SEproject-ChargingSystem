@@ -26,6 +26,9 @@ public class FaultSchedulerService {
     @Autowired
     private DispatchService dispatchService;
 
+    @Autowired
+    private StationLock stationLock;
+
     /**
      * 安排定时故障。
      * @param pileId          目标充电桩
@@ -46,11 +49,14 @@ public class FaultSchedulerService {
 
     private void runFault(String pileId, String strategy) {
         try {
-            if ("timeorder".equalsIgnoreCase(strategy)) {
-                dispatchService.handlePileFaultByTimeOrder(pileId);
-            } else {
-                dispatchService.handlePileFaultByPriority(pileId);
-            }
+            // 持全站锁执行：自有线程池与调度循环/HTTP 请求并发，必须互斥
+            stationLock.run(() -> {
+                if ("timeorder".equalsIgnoreCase(strategy)) {
+                    dispatchService.handlePileFaultByTimeOrder(pileId);
+                } else {
+                    dispatchService.handlePileFaultByPriority(pileId);
+                }
+            });
         } catch (Exception ignored) {
             // 桩已故障/不存在等，忽略；下次安排可重试
         }
@@ -58,7 +64,7 @@ public class FaultSchedulerService {
 
     private void runRecover(String pileId) {
         try {
-            dispatchService.recoverPileAndRedispatch(pileId);
+            stationLock.run(() -> dispatchService.recoverPileAndRedispatch(pileId));
         } catch (Exception ignored) {
         }
     }

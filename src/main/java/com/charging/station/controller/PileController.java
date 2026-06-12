@@ -4,6 +4,7 @@ import com.charging.station.domain.ChargingPile;
 import com.charging.station.domain.TariffPolicy;
 import com.charging.station.dto.Result;
 import com.charging.station.service.PileManagementService;
+import com.charging.station.service.StationLock;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,6 +21,10 @@ public class PileController {
     @Autowired
     private PileManagementService pileManagementService;
 
+    // 桩启停/参数变更影响调度结果，统一持全站锁
+    @Autowired
+    private StationLock stationLock;
+
     /**
      * 启动充电桩
      * POST /api/pile/poweron
@@ -27,7 +32,7 @@ public class PileController {
     @PostMapping("/poweron")
     public Result<ChargingPile> powerOn(@RequestParam String pileId) {
         try {
-            ChargingPile pile = pileManagementService.powerOn(pileId);
+            ChargingPile pile = stationLock.call(() -> pileManagementService.powerOn(pileId));
             return Result.success("充电桩启动成功", pile);
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -41,7 +46,7 @@ public class PileController {
     @PostMapping("/parameters")
     public Result<TariffPolicy> setParameters(@RequestBody TariffPolicy policy) {
         try {
-            TariffPolicy savedPolicy = pileManagementService.setParameters(policy);
+            TariffPolicy savedPolicy = stationLock.call(() -> pileManagementService.setParameters(policy));
             return Result.success("计费参数设置成功", savedPolicy);
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -55,7 +60,7 @@ public class PileController {
     @PostMapping("/run")
     public Result<ChargingPile> startChargingPile(@RequestParam String pileId) {
         try {
-            ChargingPile pile = pileManagementService.startChargingPile(pileId);
+            ChargingPile pile = stationLock.call(() -> pileManagementService.startChargingPile(pileId));
             return Result.success("充电桩运行成功", pile);
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -69,7 +74,7 @@ public class PileController {
     @PostMapping("/poweroff")
     public Result<ChargingPile> powerOff(@RequestParam String pileId) {
         try {
-            ChargingPile pile = pileManagementService.powerOff(pileId);
+            ChargingPile pile = stationLock.call(() -> pileManagementService.powerOff(pileId));
             return Result.success("充电桩关闭成功", pile);
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -83,7 +88,7 @@ public class PileController {
     @PutMapping("/power")
     public Result<ChargingPile> setPilePower(@RequestParam String pileId, @RequestParam Double powerKw) {
         try {
-            ChargingPile pile = pileManagementService.setPileParameters(pileId, powerKw);
+            ChargingPile pile = stationLock.call(() -> pileManagementService.setPileParameters(pileId, powerKw));
             return Result.success("充电桩功率修改成功", pile);
         } catch (Exception e) {
             return Result.error(e.getMessage());
