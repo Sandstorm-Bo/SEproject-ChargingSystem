@@ -235,6 +235,10 @@
             if (b.success && b.data && b.data.length) showBill(b.data[b.data.length - 1]);
             currentReq = null; prevStatus = 'FINISHED'; localStorage.removeItem('ionMyPlate'); render(); return;
           }
+          if (st === 'INTERRUPTED' && prevStatus && prevStatus !== 'INTERRUPTED') {
+            const b = await ION.getJson('/billing/bill?carId=' + encodeURIComponent(myPlate));
+            if (b.success && b.data && b.data.length) showBill(b.data[b.data.length - 1]);
+          }
           if (st === 'CANCELLED' || st === 'FINISHED') { currentReq = null; localStorage.removeItem('ionMyPlate'); render(); return; }
           currentReq = r.data; prevStatus = st;
         }
@@ -299,6 +303,13 @@
           ['充电桩', currentReq.pileId ? (station && station.waiting.find(w => w.carId === myPlate)?.pileNo || currentReq.pileId) : '—'],
           ['请求电量', `${F.num(currentReq.requestAmount, 0)} 度`],
           ['状态', '<span class="pill idle"><span class="dot"></span>桩前排队</span>']
+        ]);
+      } else if (st === 'INTERRUPTED') {
+        setBar('warn', '!', '故障中断', `车辆 ${myPlate} 的本次充电已因充电桩故障中断`, false);
+        body.innerHTML = detailRows([
+          ['排队号', currentReq.queueNum || '—'], ['模式', modeTxt],
+          ['剩余电量', `${F.num(currentReq.requestAmount, 0)} 度`],
+          ['状态', '<span class="pill fault"><span class="dot"></span>故障中断</span>']
         ]);
       } else { // WAITING
         let ahead = '';

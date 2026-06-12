@@ -424,6 +424,36 @@ public class ChargingSystemCompleteTest {
         System.out.println("\n✓ 完整充电流程测试通过！");
     }
 
+    @Test
+    @Order(13)
+    @DisplayName("fault during charging requeues remaining request")
+    public void test13_FaultDuringChargingRequeuesRemainingRequest() {
+        String carId = "FAULT_REQUEUE";
+
+        ChargingRequestDTO dto = new ChargingRequestDTO();
+        dto.setCarId(carId);
+        dto.setRequestMode("FAST");
+        dto.setRequestAmount(30.0);
+        dto.setBatteryCapacity(60.0);
+        chargingApplicationService.submitChargingRequest(dto);
+
+        dispatchService.dispatchWhenEmptySlot();
+        ChargingRequest assigned = chargingApplicationService.queryCarState(carId);
+        chargingApplicationService.callVehicle(carId);
+        chargingApplicationService.startCharging(carId, assigned.getPileId());
+
+        dispatchService.handlePileFaultByPriority(assigned.getPileId());
+
+        ChargingRequest afterFault = chargingApplicationService.queryCarState(carId);
+        assertNotEquals(CarState.INTERRUPTED, afterFault.getRequestStatus(), "faulted car should not stay invisible");
+        assertTrue(afterFault.getRequestStatus() == CarState.WAITING
+                        || afterFault.getRequestStatus() == CarState.QUEUED_AT_PILE
+                        || afterFault.getRequestStatus() == CarState.CALLED,
+                "faulted car should return to a schedulable queue");
+        assertTrue(afterFault.getRequestAmount() > 0 && afterFault.getRequestAmount() <= 30.0,
+                "requeued request should keep remaining charge amount");
+    }
+
     @AfterEach
     public void tearDown() {
         System.out.println("========================================\n");

@@ -28,7 +28,7 @@
     <select id="getActiveRequestByCarId" resultMap="ChargingRequestResultMap">
         SELECT * FROM charging_request
         WHERE car_id = #{carId}
-          AND request_status IN ('WAITING', 'QUEUED_AT_PILE', 'CHARGING')
+          AND request_status IN ('WAITING', 'QUEUED_AT_PILE', 'CALLED', 'CHARGING')
         ORDER BY request_time DESC
         LIMIT 1
     </select>

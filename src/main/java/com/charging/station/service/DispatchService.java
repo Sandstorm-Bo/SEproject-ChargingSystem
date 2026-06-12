@@ -144,15 +144,19 @@ public class DispatchService {
 
         // 2. 处理正在充电的车辆
         ChargingSession activeSession = sessionMapper.getActiveSessionByPileId(pileId);
+        ChargingRequest interruptedRequest = null;
         if (activeSession != null) {
             // 中断会话并生成账单
-            interruptSessionAndGenerateBill(activeSession, faultPile);
+            interruptedRequest = interruptSessionAndGenerateBill(activeSession, faultPile);
         }
 
         // 3. 获取故障桩排队区中尚未开始充电的车辆。
         //    必须从 DB 实查：queueMapper.getChargingQueueByPileId 不会加载 requests 列表，
         //    faultQueue.drain() 恒返回空，导致排队车辆被遗弃（既往缺陷）。
-        List<ChargingRequest> affectedRequests = queuedRequestsAtPile(pileId);
+        List<ChargingRequest> affectedRequests = new ArrayList<>(queuedRequestsAtPile(pileId));
+        if (interruptedRequest != null) {
+            affectedRequests.add(0, interruptedRequest);
+        }
         resetPileQueueLength(pileId);
 
         // 4. 受影响车辆按原相对顺序优先迁回等候区。其 requestTime 早于新到车辆，
@@ -180,13 +184,17 @@ public class DispatchService {
 
         // 2. 处理正在充电的车辆
         ChargingSession activeSession = sessionMapper.getActiveSessionByPileId(pileId);
+        ChargingRequest interruptedRequest = null;
         if (activeSession != null) {
-            interruptSessionAndGenerateBill(activeSession, faultPile);
+            interruptedRequest = interruptSessionAndGenerateBill(activeSession, faultPile);
         }
 
         // 3. 获取故障桩排队区中尚未开始充电的车辆（从 DB 实查，原因同优先级调度）
         RequestMode mode = RequestMode.fromString(faultPile.getPileType());
         List<ChargingRequest> affectedRequests = new ArrayList<>(queuedRequestsAtPile(pileId));
+        if (interruptedRequest != null) {
+            affectedRequests.add(interruptedRequest);
+        }
         resetPileQueueLength(pileId);
 
         // 4. 收集同类型其他桩排队区中尚未开始充电的车辆（正在充电的车不动）
@@ -271,7 +279,7 @@ public class DispatchService {
     /**
      * 中断会话并生成账单（私有方法）
      */
-    private void interruptSessionAndGenerateBill(ChargingSession session, ChargingPile pile) {
+    private ChargingRequest interruptSessionAndGenerateBill(ChargingSession session, ChargingPile pile) {
         // 计算当前充电量和费用（启用跨时段分段计费）
         TariffPolicy policy = queueMapper.getCurrentTariffPolicy();
         Double currentAmount = session.calculateCurrentAmount(pile.getRatedPower(), java.time.LocalDateTime.now());
@@ -292,13 +300,24 @@ public class DispatchService {
         detail.setDetailId("DTL-INT-" + java.util.UUID.randomUUID().toString().substring(0, 8));
         billMapper.insertDetailedList(detail);
 
-        // 将被中断车辆的请求标记为故障中断，并同步车辆状态
+        // 将被中断车辆的请求改为剩余电量；调用方随后把它重新放回等待区参与调度。
         ChargingRequest req = requestMapper.getChargingRequest(session.getCarId());
         if (req != null) {
-            req.interruptByFault(req.getRequestAmount());
+            double requested = req.getRequestAmount() != null ? req.getRequestAmount() : 0.0;
+            double remaining = Math.max(0.0, requested - currentAmount);
+            if (remaining <= 1e-6) {
+                req.markFinished();
+                requestMapper.updateRequestStatus(req);
+                requestMapper.updateVehicleState(session.getCarId(), CarState.FINISHED.name());
+                return null;
+            }
+            req.interruptByFault(remaining);
+            requestMapper.updateRequestAmount(req);
             requestMapper.updateRequestStatus(req);
             requestMapper.updateVehicleState(session.getCarId(), CarState.INTERRUPTED.name());
+            return req;
         }
+        return null;
     }
 
     // ============ 故障 / 调度 审计记录 ============

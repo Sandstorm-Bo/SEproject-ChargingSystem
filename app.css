@@ -347,6 +347,8 @@ select.input{ appearance:none; cursor:pointer; background-image:linear-gradient(
 .statebar.wait .glow{ background:var(--amber); }
 .statebar.charge{ background:linear-gradient(135deg, rgba(65,224,140,.1), var(--panel-2)); border-color:rgba(65,224,140,.32); }
 .statebar.charge .glow{ background:var(--live); }
+.statebar.warn{ background:linear-gradient(135deg, rgba(255,101,119,.1), var(--panel-2)); border-color:rgba(255,101,119,.32); }
+.statebar.warn .glow{ background:var(--rose); }
 .statebar.done{ background:linear-gradient(135deg, rgba(47,240,207,.1), var(--panel-2)); border-color:rgba(47,240,207,.32); }
 .statebar.done .glow{ background:var(--energy); }
 
