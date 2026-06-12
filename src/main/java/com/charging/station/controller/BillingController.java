@@ -53,4 +53,25 @@ public class BillingController {
             return Result.error(e.getMessage());
         }
     }
+
+    /**
+     * 历史详单列表：按登录用户（其名下全部车辆）或按车牌查询
+     * GET /api/billing/details?userId=U-XXXX 或 ?carId=京A12345
+     */
+    @GetMapping("/details")
+    public Result<List<DetailedList>> requestDetails(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String carId) {
+        try {
+            if (userId != null && !userId.trim().isEmpty()) {
+                return Result.success(billingService.requestDetailsByUser(userId));
+            }
+            if (carId != null && !carId.trim().isEmpty()) {
+                return Result.success(billingService.requestDetailsByCar(carId));
+            }
+            return Result.error("请提供 userId 或 carId");
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
 }

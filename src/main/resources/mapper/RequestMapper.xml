@@ -72,6 +72,7 @@
     <!-- 查询所有车辆 -->
     <select id="selectAllVehicles" resultType="com.charging.station.domain.Vehicle">
         SELECT vehicle_id as vehicleId,
+               user_id as userId,
                plate_number as plateNumber,
                vehicle_type as vehicleType,
                battery_capacity as batteryCapacity
@@ -88,6 +89,11 @@
     <!-- 同步车辆当前状态 -->
     <update id="updateVehicleState">
         UPDATE vehicle SET car_state = #{carState} WHERE vehicle_id = #{carId}
+    </update>
+
+    <!-- 绑定车辆所属用户 -->
+    <update id="updateVehicleUser">
+        UPDATE vehicle SET user_id = #{userId} WHERE vehicle_id = #{carId}
     </update>
 
     <!-- 根据充电桩ID查询所有排队和充电中的请求 -->

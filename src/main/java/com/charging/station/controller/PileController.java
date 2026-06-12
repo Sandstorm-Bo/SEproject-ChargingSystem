@@ -21,6 +21,9 @@ public class PileController {
     @Autowired
     private PileManagementService pileManagementService;
 
+    @Autowired
+    private com.charging.station.service.DispatchService dispatchService;
+
     // 桩启停/参数变更影响调度结果，统一持全站锁
     @Autowired
     private StationLock stationLock;
@@ -60,7 +63,12 @@ public class PileController {
     @PostMapping("/run")
     public Result<ChargingPile> startChargingPile(@RequestParam String pileId) {
         try {
-            ChargingPile pile = stationLock.call(() -> pileManagementService.startChargingPile(pileId));
+            ChargingPile pile = stationLock.call(() -> {
+                ChargingPile p = pileManagementService.startChargingPile(pileId);
+                // 桩重新可用即触发一次调度，让等候区车辆能立即分配过来
+                dispatchService.dispatchWhenEmptySlot();
+                return p;
+            });
             return Result.success("充电桩运行成功", pile);
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -74,7 +82,8 @@ public class PileController {
     @PostMapping("/poweroff")
     public Result<ChargingPile> powerOff(@RequestParam String pileId) {
         try {
-            ChargingPile pile = stationLock.call(() -> pileManagementService.powerOff(pileId));
+            // 关闭前结算在充车辆并把排队车辆迁回等候区（语义与故障调度一致）
+            ChargingPile pile = stationLock.call(() -> dispatchService.closePile(pileId));
             return Result.success("充电桩关闭成功", pile);
         } catch (Exception e) {
             return Result.error(e.getMessage());

@@ -23,7 +23,18 @@ public class ChargingRequestDTO {
     @Positive(message = "电池容量必须大于0")
     private Double batteryCapacity;
 
+    /** 提交申请的登录用户编号（可选，登录后由客户端携带） */
+    private String userId;
+
     public ChargingRequestDTO() {}
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
+    }
 
     public String getCarId() {
         return carId;

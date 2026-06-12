@@ -15,6 +15,7 @@
     .minibay:hover{ border-color:var(--line-3); transform:translateY(-2px); }
     .minibay.s-busy{ border-color:rgba(65,224,140,.3); }
     .minibay.s-fault{ border-color:rgba(255,101,119,.36); background:linear-gradient(90deg,rgba(255,101,119,.06),transparent); }
+    .minibay.s-off{ opacity:.55; }
     .mpost{ width:42px; flex:0 0 42px; height:52px; border-radius:9px; background:linear-gradient(180deg,#17262e,#0b141a); border:1px solid var(--line-2);
       display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; position:relative; }
     .mpost b{ font-family:var(--mono); font-size:14px; color:var(--energy); }
@@ -52,7 +53,6 @@
       <nav class="cmd-nav">
         <a class="cmd-link" href="admin.html">调度盘</a>
         <a class="cmd-link active">运维控制台</a>
-        <a class="cmd-link" href="client.html">用户端</a>
       </nav>
       <div class="topbar-actions">
         <span class="live-badge" id="liveBadge"><span class="dot"></span><span class="clock" id="clock">--:--:--</span></span>
@@ -142,6 +142,46 @@
           <button class="btn btn-ghost btn-block" onclick="batchFull()">全站批量调度</button>
         </section>
 
+        <section class="card rise" style="--d:2">
+          <div class="section-head">
+            <div class="section-title"><span class="bar"></span>指定充电桩</div>
+            <span class="section-hint">手动把等候区车辆指派到指定桩</span>
+          </div>
+          <div class="row" style="gap:8px;margin-bottom:10px;">
+            <select class="input mono" id="assignCar" style="flex:1.6;"><option value="">等候区车辆…</option></select>
+            <select class="input mono" id="assignPile" style="flex:1;">
+              <option value="P_F1">F1</option><option value="P_F2">F2</option>
+              <option value="P_T1">T1</option><option value="P_T2">T2</option><option value="P_T3">T3</option>
+            </select>
+          </div>
+          <button class="btn btn-primary btn-block" onclick="doAssign()">📌 指派到该桩</button>
+          <p class="mute" style="font-size:11px;margin-top:8px;">仅限等候区(WAITING)车辆；要求模式匹配、目标桩可用且队列有空位。</p>
+        </section>
+
+        <section class="card rise" style="--d:3">
+          <div class="section-head">
+            <div class="section-title"><span class="bar"></span>计费策略</div>
+            <span class="section-hint">峰/平/谷电价 · 服务费 · 桩功率</span>
+          </div>
+          <div class="row" style="gap:8px;margin-bottom:8px;">
+            <div class="grow"><div class="field-label" style="margin-bottom:5px;">峰时 <span class="hint">元/度</span></div><input class="input mono" id="tfPeak" type="number" step="0.1" min="0"></div>
+            <div class="grow"><div class="field-label" style="margin-bottom:5px;">平时 <span class="hint">元/度</span></div><input class="input mono" id="tfFlat" type="number" step="0.1" min="0"></div>
+          </div>
+          <div class="row" style="gap:8px;margin-bottom:10px;">
+            <div class="grow"><div class="field-label" style="margin-bottom:5px;">谷时 <span class="hint">元/度</span></div><input class="input mono" id="tfValley" type="number" step="0.1" min="0"></div>
+            <div class="grow"><div class="field-label" style="margin-bottom:5px;">服务费 <span class="hint">元/度</span></div><input class="input mono" id="tfService" type="number" step="0.1" min="0"></div>
+          </div>
+          <button class="btn btn-primary btn-block" style="margin-bottom:12px;" onclick="saveTariff()">💾 保存计费策略</button>
+          <div class="row" style="gap:8px;">
+            <select class="input mono" id="pwrPile" style="flex:1;">
+              <option value="P_F1">F1</option><option value="P_F2">F2</option>
+              <option value="P_T1">T1</option><option value="P_T2">T2</option><option value="P_T3">T3</option>
+            </select>
+            <input class="input mono" id="pwrVal" type="number" min="1" placeholder="功率 度/h" style="flex:1;">
+            <button class="btn btn-ghost btn-sm" onclick="setPower()">改功率</button>
+          </div>
+        </section>
+
         <section class="card rise" style="--d:3">
           <div class="section-head">
             <div class="section-title"><span class="bar"></span>仿真时间流速</div>
@@ -155,6 +195,12 @@
             <button class="btn btn-ghost" data-v="240">240×</button>
           </div>
           <p class="mute" style="font-size:11px;margin-top:10px;">1 真实秒 = N 仿真秒，调整后立即生效（验收按 1:10 设为 10×）。</p>
+          <div class="field-label" style="margin-top:12px;">仿真起始时间 <span class="hint" id="simClockNow">未启用</span></div>
+          <div class="row" style="gap:8px;">
+            <input class="input mono" id="simStart" type="time" value="06:00" style="flex:1;">
+            <button class="btn btn-primary btn-sm" onclick="setSimStart()">锚定</button>
+          </div>
+          <p class="mute" style="font-size:11px;margin-top:8px;">把仿真时钟锚定到指定时刻（验收从 06:00 谷时开始）；电价时段与页面时钟随之切换。</p>
         </section>
 
         <section class="card rise" style="--d:4">
@@ -183,12 +229,14 @@
     const F = ION.fmt;
     ION.initServerBar();
     ION.startClock('clock');
+    ION.adminGate();   // 管理员登录门：未登录弹出登录/注册浮层
 
     function station(p) {
-      const cls = p.status === 'BUSY' ? 's-busy' : p.status === 'FAULT' ? 's-fault'
-        : (p.status === 'OFFLINE' || p.status === 'CLOSED') ? 's-off' : '';
+      const off = p.status === 'OFFLINE' || p.status === 'CLOSED';
+      const cls = p.status === 'BUSY' ? 's-busy' : p.status === 'FAULT' ? 's-fault' : off ? 's-off' : '';
       const pill = p.status === 'BUSY' ? '<span class="pill live"><span class="dot"></span>充电</span>'
         : p.status === 'FAULT' ? '<span class="pill fault"><span class="dot"></span>故障</span>'
+        : off ? '<span class="pill off"><span class="dot"></span>已关闭</span>'
         : p.queueLength > 0 ? `<span class="pill wait"><span class="dot"></span>排队${p.queueLength}</span>`
         : '<span class="pill idle"><span class="dot"></span>空闲</span>';
       const mode = p.pileType === 'FAST' ? 'fast' : 'trickle';
@@ -197,15 +245,24 @@
         body = `<div class="mb ${mode}"><svg class="caricon"><use href="#car"/></svg><b class="mono">${p.currentCarId}</b> · ${p.chargeProgress || 0}%</div>`;
       } else if (p.status === 'FAULT') {
         body = `<div class="mb" style="color:#ffb3bc;">⚠ ${p.faultReason || '已停机'}</div>`;
+      } else if (off) {
+        body = `<div class="mb" style="color:var(--text-mute);">⏻ 已关闭 · 不参与调度</div>`;
       } else {
         body = `<div class="mb">${p.queueLength > 0 ? p.queueLength + ' 辆排队' : '空闲 · 点击注入故障'}</div>`;
       }
+      // 启动/关闭按钮（需求 c)：管理员启动/关闭充电桩），与点击卡片注入故障互不干扰
+      const powerBtn = off
+        ? `<button class="btn btn-success btn-sm" onclick="pileRun(event,'${p.pileId}')">▶ 启动</button>`
+        : p.status === 'FAULT'
+          ? `<button class="btn btn-ghost btn-sm" onclick="pileRecover(event,'${p.pileId}')">恢复</button>`
+          : `<button class="btn btn-ghost btn-sm" onclick="pileOff(event,'${p.pileId}')">⏻ 关闭</button>`;
       return `<div class="minibay ${cls}" onclick="togglePile('${p.pileId}','${p.status}')">
         <div class="mpost"><b>${p.pileNo}</b><span class="led"></span></div>
         <div class="minfo">
           <div class="mt"><span>${F.pileTypeMeta(p.pileType, p.ratedPower)}</span>${pill}</div>
           ${body}
         </div>
+        <div style="flex:0 0 auto;">${powerBtn}</div>
       </div>`;
     }
 
@@ -215,18 +272,102 @@
       document.getElementById('sCharging').textContent = data.piles.filter(p => p.status === 'BUSY').length;
       document.getElementById('sWaiting').textContent = `${data.waitingAreaCount || 0} / ${data.queuedAtPileCount || 0}`;
       document.getElementById('sFault').textContent = data.piles.filter(p => p.status === 'FAULT').length;
-      const energy = data.piles.reduce((s, p) => s + (p.totalChargeAmount || 0), 0);
-      document.getElementById('sEnergy').textContent = `${F.num(energy, 0)} 度 · ¥${F.money(data.revenueTotal || 0)}`;
+      // 实时统计：已结算累计 + 正在充电会话的已充电量/当前费用（充电过程中即实时增长）
+      const liveEnergy = data.piles.reduce((s, p) => s + (p.chargedAmount || 0), 0);
+      const liveCost = data.piles.reduce((s, p) => s + (p.currentCost || 0), 0);
+      const energy = data.piles.reduce((s, p) => s + (p.totalChargeAmount || 0), 0) + liveEnergy;
+      document.getElementById('sEnergy').textContent = `${F.num(energy, 1)} 度 · ¥${F.money((data.revenueTotal || 0) + liveCost)}`;
       if (data.simSpeed) {
         const v = Math.round(data.simSpeed);
         document.getElementById('speedNow').textContent = v + '×';
         document.querySelectorAll('#speedPreset .btn').forEach(b => b.classList.toggle('on', +b.dataset.v === v));
       }
+      const sc = document.getElementById('simClockNow');
+      if (sc) sc.textContent = data.simClockEnabled ? ('仿真 ' + (data.simTime || '')) : '未启用（真实时间）';
+
+      // 指定充电桩：等候区车辆下拉（仅集合变化时重建，避免打断已展开的下拉）
+      const sel = document.getElementById('assignCar');
+      const ws = (data.waiting || []).filter(w => w.status === 'WAITING');
+      const sig = ws.map(w => w.carId + w.mode).join('|');
+      if (sel && sel.dataset.sig !== sig) {
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">等候区车辆…</option>' +
+          ws.map(w => `<option value="${w.carId}">${w.carId} · ${F.pileType(w.mode)} ${F.num(w.requestAmount, 0)}度 (${w.queueNum})</option>`).join('');
+        if (ws.some(w => w.carId === cur)) sel.value = cur;
+        sel.dataset.sig = sig;
+      }
+
+      // 计费策略：首帧预填当前值（之后不覆盖管理员正在编辑的内容）
+      if (data.tariff && !window._tariffFilled) {
+        window._tariffFilled = true;
+        document.getElementById('tfPeak').value = data.tariff.peakPrice;
+        document.getElementById('tfFlat').value = data.tariff.flatPrice;
+        document.getElementById('tfValley').value = data.tariff.valleyPrice;
+        document.getElementById('tfService').value = data.tariff.serviceFee;
+      }
+    }
+
+    // ===== 指定充电桩（YL-024）=====
+    async function doAssign() {
+      const carId = document.getElementById('assignCar').value;
+      const pileId = document.getElementById('assignPile').value;
+      if (!carId) return log('请选择等候区车辆', 'error');
+      try {
+        const r = await ION.post('/dispatch/assign', { carId, pileId });
+        log(r.success ? '📌 ' + r.data : (r.message || '指派失败'), r.success ? 'success' : 'error');
+      } catch (e) { log('指派失败: ' + e.message, 'error'); }
+    }
+
+    // ===== 计费策略（YL-028）=====
+    async function saveTariff() {
+      const v = id => parseFloat(document.getElementById(id).value);
+      const peak = v('tfPeak'), flat = v('tfFlat'), valley = v('tfValley'), service = v('tfService');
+      if ([peak, flat, valley, service].some(x => isNaN(x) || x < 0)) return log('电价/服务费需为非负数字', 'error');
+      try {
+        const r = await ION.postJson('/pile/parameters', {
+          policyId: 'POLICY_DEFAULT', peakPrice: peak, flatPrice: flat, valleyPrice: valley, serviceFeePerKwh: service
+        });
+        log(r.success ? `计费策略已更新：峰${peak} 平${flat} 谷${valley} 服务费${service} 元/度` : (r.message || '保存失败'),
+            r.success ? 'success' : 'error');
+      } catch (e) { log('保存失败: ' + e.message, 'error'); }
+    }
+    async function setPower() {
+      const pileId = document.getElementById('pwrPile').value;
+      const powerKw = parseFloat(document.getElementById('pwrVal').value);
+      if (!powerKw || powerKw <= 0) return log('功率需大于 0', 'error');
+      try {
+        const r = await ION.put('/pile/power', { pileId, powerKw });
+        log(r.success ? `${pileId} 功率已改为 ${powerKw} 度/h` : (r.message || '修改失败'), r.success ? 'success' : 'error');
+      } catch (e) { log('修改失败: ' + e.message, 'error'); }
     }
 
     async function togglePile(pileId, status) {
+      if (status === 'OFFLINE' || status === 'CLOSED') { log(`${pileId} 已关闭，请先点「启动」`, 'warning'); return; }
       if (status === 'FAULT') { await ION.post('/dispatch/recover', { pileId }); log(`${pileId} 已恢复`, 'success'); }
       else setFault(pileId);
+    }
+    // ===== 启动 / 关闭充电桩（需求 c)）=====
+    async function pileRun(e, pileId) {
+      e.stopPropagation();
+      try {
+        const r = await ION.post('/pile/run', { pileId });
+        log(r.success ? `${pileId} 已启动，重新参与调度` : (r.message || '启动失败'), r.success ? 'success' : 'error');
+      } catch (err) { log('启动失败: ' + err.message, 'error'); }
+    }
+    async function pileOff(e, pileId) {
+      e.stopPropagation();
+      if (!confirm(`关闭 ${pileId}？正在充电的车辆将按已充电量出账单，排队车辆重新调度。`)) return;
+      try {
+        const r = await ION.post('/pile/poweroff', { pileId });
+        log(r.success ? `${pileId} 已关闭 · 受影响车辆已重新调度` : (r.message || '关闭失败'), r.success ? 'warning' : 'error');
+      } catch (err) { log('关闭失败: ' + err.message, 'error'); }
+    }
+    async function pileRecover(e, pileId) {
+      e.stopPropagation();
+      try {
+        await ION.post('/dispatch/recover', { pileId });
+        log(`${pileId} 已恢复`, 'success');
+      } catch (err) { log('恢复失败: ' + err.message, 'error'); }
     }
     async function setFault(pileId) {
       const strategy = document.getElementById('strategy').value;
@@ -270,6 +411,16 @@
         const r = await ION.post('/monitor/reset');
         log(r.success ? '数据库已重置 · 充电桩复位为空闲' : (r.message || '重置失败'), r.success ? 'success' : 'error');
       } catch (e) { log('重置失败', 'error'); }
+    }
+
+    // ===== 仿真起始时间（验收用：锚定到 06:00 谷时起跑）=====
+    async function setSimStart() {
+      const t = document.getElementById('simStart').value;
+      if (!t) return log('请选择起始时间', 'error');
+      try {
+        const r = await ION.post('/monitor/sim-clock', { start: t });
+        log(r.success ? `仿真时钟已锚定为 ${t}，页面时钟与电价时段已切换到仿真时间轴` : (r.message || '设置失败'), r.success ? 'success' : 'error');
+      } catch (e) { log('设置失败', 'error'); }
     }
 
     // ===== 定时故障（验收用）=====

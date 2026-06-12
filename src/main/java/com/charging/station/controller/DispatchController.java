@@ -30,6 +30,20 @@ public class DispatchController {
     private StationLock stationLock;
 
     /**
+     * 手动指派：把等候区车辆指派到指定充电桩（YL-024 指定充电桩）
+     * POST /api/dispatch/assign?carId=xxx&pileId=P_F1
+     */
+    @PostMapping("/assign")
+    public Result<String> assignCarToPile(@RequestParam String carId, @RequestParam String pileId) {
+        try {
+            String result = stationLock.call(() -> dispatchService.assignCarToPile(carId, pileId));
+            return Result.success(result);
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    /**
      * 优先级故障调度
      * POST /api/dispatch/fault/priority
      */

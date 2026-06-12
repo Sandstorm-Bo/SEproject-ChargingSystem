@@ -114,7 +114,6 @@
       <nav class="cmd-nav">
         <a class="cmd-link active">调度盘</a>
         <a class="cmd-link" href="console.html">运维控制台</a>
-        <a class="cmd-link" href="client.html">用户端</a>
       </nav>
       <div class="topbar-actions">
         <span class="chip flat" id="tariffChip">平时 ¥0.70/度</span>
@@ -168,6 +167,47 @@
       <div class="tele"><div class="tlabel">累计充电量</div><b style="color:var(--energy-2)"><span id="tEnergy">0</span><small>度</small></b></div>
       <div class="tele"><div class="tlabel">累计营收</div><b style="color:var(--energy)">¥<span id="tRevenue">0</span></b></div>
     </section>
+
+    <!-- 等候服务车辆信息（需求 c)：用户ID / 电池总容量 / 请求充电量 / 排队时长） -->
+    <section class="card rise" style="--d:2">
+      <div class="section-head">
+        <div class="section-title"><span class="bar"></span>等候服务车辆</div>
+        <span class="section-hint">等候区 + 各桩排队区 · 实时</span>
+      </div>
+      <div class="dtable-wrap">
+        <table class="dtable">
+          <thead><tr>
+            <th>排队号</th><th>用户 ID</th><th>车牌</th><th>模式</th>
+            <th class="num">电池总容量</th><th class="num">请求充电量</th>
+            <th class="num">排队时长</th><th>位置</th><th>状态</th>
+          </tr></thead>
+          <tbody id="waitRows"><tr><td colspan="9" class="empty">暂无等候车辆</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 报表（需求 c)：日 / 周 / 月 × 充电桩 累计统计） -->
+    <section class="card rise" style="--d:3">
+      <div class="section-head">
+        <div class="section-title"><span class="bar"></span>运营报表</div>
+        <div class="row" style="gap:6px;">
+          <button class="btn btn-primary btn-sm" id="rpDay" onclick="loadReport('day')">日报</button>
+          <button class="btn btn-ghost btn-sm" id="rpWeek" onclick="loadReport('week')">周报</button>
+          <button class="btn btn-ghost btn-sm" id="rpMonth" onclick="loadReport('month')">月报</button>
+          <button class="btn btn-ghost btn-sm" onclick="loadReport()">↻</button>
+        </div>
+      </div>
+      <div class="dtable-wrap">
+        <table class="dtable">
+          <thead><tr>
+            <th>时间</th><th>充电桩编号</th>
+            <th class="num">累计充电次数</th><th class="num">累计充电时长</th><th class="num">累计充电电量</th>
+            <th class="num">累计充电费用</th><th class="num">累计服务费用</th><th class="num">累计总费用</th>
+          </tr></thead>
+          <tbody id="reportRows"><tr><td colspan="8" class="empty">暂无数据，完成充电后自动生成</td></tr></tbody>
+        </table>
+      </div>
+    </section>
   </div>
 
   <script src="lib/sockjs.min.js"></script>
@@ -177,6 +217,7 @@
     const F = ION.fmt;
     ION.initServerBar();
     ION.startClock('clock');
+    ION.adminGate();   // 管理员登录门：未登录弹出登录/注册浮层
 
     const bays = {};   // pileId -> refs
     const M = 2;       // 每桩排队位（M=3 含1充电位）
@@ -286,7 +327,7 @@
       // 更新"已在场"集合：下一帧只对新出现的车播放驶入动画
       shown.clear(); currentIds.forEach(id => shown.add(id));
 
-      // 仪表
+      // 仪表（充电量/营收 = 已结算累计 + 进行中会话实时值）
       const total = data.piles.length;
       const online = data.piles.filter(p => p.status !== 'FAULT' && p.status !== 'OFFLINE' && p.status !== 'CLOSED').length;
       document.getElementById('tOnline').textContent = online;
@@ -294,8 +335,13 @@
       document.getElementById('tCharging').textContent = data.piles.filter(p => p.status === 'BUSY').length;
       document.getElementById('tWaiting').textContent = data.waitingAreaCount || 0;
       document.getElementById('tQueued').textContent = data.queuedAtPileCount || 0;
-      document.getElementById('tEnergy').textContent = F.num(data.piles.reduce((s, p) => s + (p.totalChargeAmount || 0), 0), 0);
-      document.getElementById('tRevenue').textContent = F.money(data.revenueTotal || 0);
+      const liveEnergy = data.piles.reduce((s, p) => s + (p.chargedAmount || 0), 0);
+      const liveCost = data.piles.reduce((s, p) => s + (p.currentCost || 0), 0);
+      document.getElementById('tEnergy').textContent = F.num(data.piles.reduce((s, p) => s + (p.totalChargeAmount || 0), 0) + liveEnergy, 1);
+      document.getElementById('tRevenue').textContent = F.money((data.revenueTotal || 0) + liveCost);
+
+      // 等候服务车辆信息表（含正在桩前排队的车）
+      renderWaitTable(waiting);
 
       // 计费时段
       if (data.tariff) {
@@ -310,6 +356,57 @@
     }
 
     ION.connectStatus(update);
+
+    /* ===== 等候服务车辆信息（用户ID / 电池总容量 / 请求充电量 / 排队时长） ===== */
+    function fmtWait(min) {
+      if (min == null) return '—';
+      return min >= 60 ? (min / 60).toFixed(1) + ' 小时' : Math.round(min) + ' 分钟';
+    }
+    function renderWaitTable(waiting) {
+      const body = document.getElementById('waitRows');
+      const rows = (waiting || []).filter(w => w.status === 'WAITING' || w.status === 'QUEUED_AT_PILE' || w.status === 'CALLED');
+      if (!rows.length) { body.innerHTML = '<tr><td colspan="9" class="empty">暂无等候车辆</td></tr>'; return; }
+      body.innerHTML = rows.map(w => `<tr>
+        <td>${w.queueNum || '—'}</td>
+        <td>${w.userId || '<span style="color:var(--text-mute)">未登录</span>'}</td>
+        <td>${w.carId || '—'}</td>
+        <td><span class="chip ${w.mode === 'FAST' ? 'fast' : 'trickle'}">${F.pileType(w.mode)}</span></td>
+        <td class="num">${F.num(w.batteryCapacity, 0)} 度</td>
+        <td class="num">${F.num(w.requestAmount, 1)} 度</td>
+        <td class="num">${fmtWait(w.waitMinutes)}</td>
+        <td>${w.status === 'WAITING' ? '等候区' : (w.pileNo || '—') + ' · 队位 ' + (w.queuePosition || '—')}</td>
+        <td>${F.carState(w.status)}</td>
+      </tr>`).join('');
+    }
+
+    /* ===== 运营报表（日 / 周 / 月） ===== */
+    let reportPeriod = 'day';
+    async function loadReport(p) {
+      if (p) reportPeriod = p;
+      ['rpDay', 'rpWeek', 'rpMonth'].forEach(id => {
+        const want = { rpDay: 'day', rpWeek: 'week', rpMonth: 'month' }[id];
+        document.getElementById(id).className = 'btn btn-sm ' + (want === reportPeriod ? 'btn-primary' : 'btn-ghost');
+      });
+      const body = document.getElementById('reportRows');
+      try {
+        const r = await ION.getJson('/report?period=' + reportPeriod);
+        if (!r.success) { body.innerHTML = `<tr><td colspan="8" class="empty">${r.message || '查询失败'}</td></tr>`; return; }
+        const rows = r.data || [];
+        if (!rows.length) { body.innerHTML = '<tr><td colspan="8" class="empty">暂无数据，完成充电后自动生成</td></tr>'; return; }
+        body.innerHTML = rows.map(x => `<tr>
+          <td>${x.time}</td>
+          <td>${x.pileNo || x.pileId}</td>
+          <td class="num">${F.num(x.chargeCount)}</td>
+          <td class="num">${F.num(x.totalDuration, 1)} 分</td>
+          <td class="num">${F.num(x.totalAmount, 2)} 度</td>
+          <td class="num">¥${F.money(x.totalChargeFee)}</td>
+          <td class="num">¥${F.money(x.totalServiceFee)}</td>
+          <td class="num"><b style="color:var(--energy)">¥${F.money(x.totalFee)}</b></td>
+        </tr>`).join('');
+      } catch (e) { body.innerHTML = '<tr><td colspan="8" class="empty">查询失败，请检查服务器连接</td></tr>'; }
+    }
+    loadReport('day');
+    setInterval(() => loadReport(), 10000);   // 报表 10s 自动刷新
   </script>
 </body>
 </html>

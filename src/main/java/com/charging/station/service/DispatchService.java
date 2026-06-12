@@ -286,6 +286,94 @@ public class DispatchService {
         return "充电桩恢复并重新调度完成";
     }
 
+    // ============ 管理端手动指派（YL-024 指定充电桩） ============
+
+    /**
+     * 管理员把等候区车辆手动指派到指定充电桩。
+     * 校验：车辆在等候区(WAITING)、模式与桩类型匹配、桩可调度、桩排队队列有空位。
+     */
+    @Transactional
+    public String assignCarToPile(String carId, String pileId) {
+        ChargingRequest request = requestMapper.getActiveRequestByCarId(carId.trim().toUpperCase());
+        if (request == null) {
+            throw new IllegalArgumentException("未找到该车辆的活跃充电请求: " + carId);
+        }
+        if (request.getRequestStatus() != CarState.WAITING) {
+            throw new IllegalStateException("车辆不在等候区（当前状态 " + request.getRequestStatus() + "），无法指派");
+        }
+        ChargingPile pile = pileMapper.getPile(pileId);
+        if (pile == null) {
+            throw new IllegalArgumentException("充电桩不存在: " + pileId);
+        }
+        if (!pile.getPileType().equals(request.getRequestMode().toString())) {
+            throw new IllegalStateException("充电模式不匹配：车辆为 " + request.getRequestMode()
+                    + "，目标桩为 " + pile.getPileType());
+        }
+        if (!pile.canAcceptNewVehicle()) {
+            throw new IllegalStateException("充电桩当前不可用（" + pile.getStatus() + "）");
+        }
+        ChargingQueue queue = queueMapper.getChargingQueueByPileId(pileId);
+        if (queue == null || !queue.hasRoom()) {
+            throw new IllegalStateException("该桩排队队列已满");
+        }
+
+        queue.enqueue(request);
+        queueMapper.updateChargingQueue(queue);
+        request.assignToPile(pileId, queue.getCurrentLength());
+        requestMapper.updateRequestStatus(request);
+        requestMapper.updateVehicleState(request.getCarId(), CarState.QUEUED_AT_PILE.name());
+
+        WaitingQueue waitingQueue = queueMapper.getWaitingQueue(request.getRequestMode());
+        if (waitingQueue != null) {
+            waitingQueue.setQueueLength(Math.max(0, waitingQueue.getQueueLength() - 1));
+            queueMapper.updateWaitingQueue(waitingQueue);
+        }
+        recordDispatchRaw("MANUAL_ASSIGN", "car=" + request.getCarId() + " -> pile=" + pileId, 1);
+        return request.getCarId() + " 已指派到 " + pile.getPileNo() + "（队位 " + request.getQueuePosition() + "）";
+    }
+
+    // ============ 管理端启停充电桩 ============
+
+    /**
+     * 关闭充电桩（管理员正常停用，非故障）。
+     * 与故障调度同样的安全语义：正在充电的车辆按已充部分出账单、剩余电量重新入队，
+     * 桩前排队车辆迁回等候区重新调度；随后充电桩置为 OFFLINE 不再参与调度。
+     */
+    @Transactional
+    public ChargingPile closePile(String pileId) {
+        ChargingPile pile = pileMapper.getPile(pileId);
+        if (pile == null) {
+            throw new IllegalArgumentException("充电桩不存在: " + pileId);
+        }
+        if (pile.getStatus() == PileStatus.OFFLINE || pile.getStatus() == PileStatus.CLOSED) {
+            return pile; // 已关闭，幂等
+        }
+
+        // 中断正在充电的车辆（已充部分出账单，剩余电量随请求重新入队）
+        ChargingRequest interrupted = null;
+        ChargingSession activeSession = sessionMapper.getActiveSessionByPileId(pileId);
+        if (activeSession != null) {
+            interrupted = interruptSessionAndGenerateBill(activeSession, pile);
+        }
+
+        // 桩前排队车辆迁回等候区
+        List<ChargingRequest> affectedRequests = new ArrayList<>();
+        if (interrupted != null) {
+            affectedRequests.add(interrupted);
+        }
+        affectedRequests.addAll(queuedRequestsAtPile(pileId));
+        resetPileQueueLength(pileId);
+        requeueToWaiting(affectedRequests, RequestMode.fromString(pile.getPileType()));
+
+        // 关闭充电桩并触发重新调度
+        pile.powerOff();
+        pileMapper.updatePileState(pile);
+        recordDispatchRaw("PILE_CLOSE", "pile=" + pileId + ", requeued=" + affectedRequests.size(),
+                affectedRequests.size());
+        dispatchWhenEmptySlot();
+        return pile;
+    }
+
     // ============ 故障调度公共辅助 ============
 
     /** 取某桩排队区中尚未开始充电（QUEUED_AT_PILE / CALLED）的请求（从 DB 实查） */

@@ -26,6 +26,16 @@ public interface BillMapper {
     List<DetailedList> getDetailedListByBillId(@Param("billId") String billId);
 
     /**
+     * 按用户查询其名下所有车辆的详单（联查账单/车辆，含车牌）
+     */
+    List<DetailedList> getDetailsByUserId(@Param("userId") String userId);
+
+    /**
+     * 按车辆查询详单（联查账单，含车牌）
+     */
+    List<DetailedList> getDetailsByCarId(@Param("carId") String carId);
+
+    /**
      * 插入账单
      */
     void insertBill(Bill bill);

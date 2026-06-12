@@ -7,6 +7,7 @@ package com.charging.station.domain;
 public class Vehicle {
 
     private String vehicleId;          // 车辆编号
+    private String userId;             // 所属用户编号
     private String plateNumber;        // 车牌号
     private String vehicleType;        // 车辆类型
     private Double batteryCapacity;    // 电池总容量（度）
@@ -19,6 +20,14 @@ public class Vehicle {
 
     public void setVehicleId(String vehicleId) {
         this.vehicleId = vehicleId;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
     }
 
     public String getPlateNumber() {

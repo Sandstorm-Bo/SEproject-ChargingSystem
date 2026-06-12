@@ -40,4 +40,24 @@ public class BillingService {
         }
         return billMapper.getDetailedListByBillId(billId);
     }
+
+    /**
+     * 按登录用户查询其名下所有车辆的历史详单
+     */
+    public List<DetailedList> requestDetailsByUser(String userId) {
+        if (userId == null || userId.trim().isEmpty()) {
+            throw new IllegalArgumentException("用户编号不能为空");
+        }
+        return billMapper.getDetailsByUserId(userId.trim());
+    }
+
+    /**
+     * 按车辆查询历史详单
+     */
+    public List<DetailedList> requestDetailsByCar(String carId) {
+        if (carId == null || carId.trim().isEmpty()) {
+            throw new IllegalArgumentException("车辆编号不能为空");
+        }
+        return billMapper.getDetailsByCarId(carId.trim().toUpperCase());
+    }
 }

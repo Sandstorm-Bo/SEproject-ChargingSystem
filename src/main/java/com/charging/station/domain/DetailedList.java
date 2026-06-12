@@ -18,9 +18,27 @@ public class DetailedList {
     private Double chargeFee;               // 充电费用
     private Double serviceFee;              // 服务费用
     private Double subtotalFee;             // 小计费用
+    private LocalDateTime createdAt;        // 详单生成时间
+    private String carId;                   // 车辆编号（联查账单得到，列表展示用）
 
     // Constructors
     public DetailedList() {}
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public String getCarId() {
+        return carId;
+    }
+
+    public void setCarId(String carId) {
+        this.carId = carId;
+    }
 
     // Getters and Setters
     public String getDetailId() {
@@ -118,6 +136,8 @@ public class DetailedList {
         detail.setChargeFee(session.getChargeFee());
         detail.setServiceFee(session.getServiceFee());
         detail.setSubtotalFee(session.getTotalFee());
+        // 详单生成时间同样取仿真时间轴时刻，与起止时间保持同一时间轴
+        detail.setCreatedAt(com.charging.station.util.SimClock.nowVirtual());
         return detail;
     }
 }

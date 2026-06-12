@@ -77,4 +77,9 @@ public interface RequestMapper {
      * 同步更新车辆当前状态 car_state
      */
     void updateVehicleState(@Param("carId") String carId, @Param("carState") String carState);
+
+    /**
+     * 绑定车辆所属用户（登录用户提交充电申请时）
+     */
+    void updateVehicleUser(@Param("carId") String carId, @Param("userId") String userId);
 }

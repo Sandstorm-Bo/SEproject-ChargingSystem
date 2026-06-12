@@ -15,9 +15,30 @@
 
     <!-- 根据账单ID查询详单 -->
     <select id="getDetailedListByBillId" resultType="com.charging.station.domain.DetailedList">
-        SELECT * FROM detailed_list
-        WHERE bill_id = #{billId}
-        ORDER BY start_time
+        SELECT d.*, b.car_id
+        FROM detailed_list d
+        JOIN bill b ON d.bill_id = b.bill_id
+        WHERE d.bill_id = #{billId}
+        ORDER BY d.start_time
+    </select>
+
+    <!-- 按用户查询其名下所有车辆的详单（最近在前） -->
+    <select id="getDetailsByUserId" resultType="com.charging.station.domain.DetailedList">
+        SELECT d.*, b.car_id
+        FROM detailed_list d
+        JOIN bill b ON d.bill_id = b.bill_id
+        JOIN vehicle v ON b.car_id = v.vehicle_id
+        WHERE v.user_id = #{userId}
+        ORDER BY d.created_at DESC, d.start_time DESC
+    </select>
+
+    <!-- 按车辆查询详单（最近在前） -->
+    <select id="getDetailsByCarId" resultType="com.charging.station.domain.DetailedList">
+        SELECT d.*, b.car_id
+        FROM detailed_list d
+        JOIN bill b ON d.bill_id = b.bill_id
+        WHERE b.car_id = #{carId}
+        ORDER BY d.created_at DESC, d.start_time DESC
     </select>
 
     <!-- 插入账单 -->
@@ -35,10 +56,11 @@
     <insert id="insertDetailedList">
         INSERT INTO detailed_list (
             detail_id, bill_id, pile_id, charge_amount, charge_duration,
-            start_time, end_time, charge_fee, service_fee, subtotal_fee
+            start_time, end_time, charge_fee, service_fee, subtotal_fee, created_at
         ) VALUES (
             #{detailId}, #{billId}, #{pileId}, #{chargeAmount}, #{chargeDuration},
-            #{startTime}, #{endTime}, #{chargeFee}, #{serviceFee}, #{subtotalFee}
+            #{startTime}, #{endTime}, #{chargeFee}, #{serviceFee}, #{subtotalFee},
+            COALESCE(#{createdAt}, CURRENT_TIMESTAMP)
         )
     </insert>
 

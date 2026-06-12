@@ -48,6 +48,10 @@ public class ChargingApplicationService {
         // 0. 确保车辆存在（动态创建）
         String carId = dto.getCarId().trim().toUpperCase();
         ensureVehicleExists(carId, dto.getBatteryCapacity());
+        // 登录用户提交时把车辆挂到该用户名下（详单按用户查询的依据）
+        if (dto.getUserId() != null && !dto.getUserId().trim().isEmpty()) {
+            requestMapper.updateVehicleUser(carId, dto.getUserId().trim());
+        }
 
         // 充电量不能超过电池容量
         Double cap = dto.getBatteryCapacity();

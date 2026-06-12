@@ -443,3 +443,19 @@ select.input{ appearance:none; cursor:pointer; background-image:linear-gradient(
   *{ animation:none !important; transition:none !important; }
   .rise{ opacity:1; }
 }
+
+/* ---- 数据表格（详单 / 报表 / 等候车辆） ---- */
+.dtable-wrap{ overflow-x:auto; }
+.dtable{ width:100%; border-collapse:collapse; font-size:12.5px; }
+.dtable th{ text-align:left; font-family:var(--mono); font-size:10px; letter-spacing:1px; text-transform:uppercase;
+  color:var(--text-mute); padding:9px 10px; border-bottom:1px solid var(--line-2); white-space:nowrap; }
+.dtable td{ padding:9px 10px; border-bottom:1px solid var(--line); color:var(--text-dim);
+  font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.dtable tbody tr:last-child td{ border-bottom:none; }
+.dtable tbody tr:hover td{ background:rgba(255,255,255,.03); }
+.dtable .num{ text-align:right; }
+.dtable .empty{ color:var(--text-mute); text-align:center; padding:20px 0; font-family:inherit; }
+
+/* ---- 登录浮层 ---- */
+.auth-tabs{ display:flex; gap:8px; margin-bottom:18px; }
+.auth-tabs .btn{ flex:1; }

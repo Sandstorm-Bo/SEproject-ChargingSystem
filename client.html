@@ -36,6 +36,11 @@
         <a class="cmd-link" href="console.html">运维控制台</a>
         <a class="cmd-link active">用户端</a>
       </nav>
+      <div class="row" style="gap:10px;">
+        <span class="pill idle" id="userBadge" style="display:none;"><span class="dot"></span><span id="userNameTxt"></span></span>
+        <button class="btn btn-ghost btn-sm" id="btnLogout" style="display:none;" onclick="logout()">退出登录</button>
+        <span class="live-badge" id="liveBadge"><span class="dot"></span><span class="clock" id="clock">--:--:--</span></span>
+      </div>
       <div class="srv">
         <div class="srv-pill" title="服务器连接"><span class="dot"></span><span id="srvText">连接中</span></div>
         <div class="srv-panel" id="srvPanel">
@@ -117,6 +122,50 @@
         </p>
       </section>
     </div>
+
+    <!-- 历史详单 -->
+    <section class="card rise" style="--d:3">
+      <div class="section-head">
+        <div class="section-title"><span class="bar"></span>我的充电详单</div>
+        <button class="btn btn-ghost btn-sm" onclick="loadDetails()">↻ 刷新</button>
+      </div>
+      <div class="dtable-wrap">
+        <table class="dtable">
+          <thead><tr>
+            <th>详单编号</th><th>详单生成时间</th><th>车牌</th><th>充电桩</th>
+            <th class="num">充电电量</th><th class="num">充电时长</th>
+            <th>启动时间</th><th>停止时间</th>
+            <th class="num">充电费用</th><th class="num">服务费用</th><th class="num">总费用</th>
+          </tr></thead>
+          <tbody id="detailRows"><tr><td colspan="11" class="empty">登录后可查看历史充电详单</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- 登录 / 注册 -->
+  <div class="mask" id="authMask">
+    <div class="modal" style="max-width:380px;">
+      <div class="modal-head">
+        <h3>🔐 用户登录</h3>
+        <p>登录后可提交充电申请并查看本人历史详单</p>
+      </div>
+      <div class="auth-tabs">
+        <button class="btn btn-primary" id="tabLogin" onclick="switchAuth('login')">登录</button>
+        <button class="btn btn-ghost" id="tabReg" onclick="switchAuth('register')">注册</button>
+      </div>
+      <div class="field">
+        <div class="field-label">用户名</div>
+        <input type="text" class="input mono" id="authUser" maxlength="30" placeholder="如 alice">
+      </div>
+      <div class="field">
+        <div class="field-label">密码 <span class="hint">至少 4 位</span></div>
+        <input type="password" class="input mono" id="authPass" maxlength="50" placeholder="••••••">
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-primary btn-block" id="authSubmit" onclick="doAuth()">登 录</button>
+      </div>
+    </div>
   </div>
 
   <!-- 账单 -->
@@ -137,6 +186,7 @@
   <script>
     const F = ION.fmt;
     ION.initServerBar();
+    ION.startClock('clock');
 
     let selectedMode = 'F';
     let myPlate = null;
@@ -144,6 +194,78 @@
     let station = null;        // 最近一次 WebSocket 快照
     let prevStatus = null;
     let pollTimer = null;
+
+    /* ===== 登录 / 注册 =====
+       登录态与车牌均存 sessionStorage：每个浏览器标签页独立，
+       同一台电脑可开多个标签分别登录不同用户模拟多个客户端。 */
+    let authMode = 'login';
+    let me = null;             // {userId, username}
+    try { me = JSON.parse(sessionStorage.getItem('ionUser') || 'null'); } catch (e) { me = null; }
+
+    function switchAuth(m) {
+      authMode = m;
+      document.getElementById('tabLogin').className = 'btn ' + (m === 'login' ? 'btn-primary' : 'btn-ghost');
+      document.getElementById('tabReg').className = 'btn ' + (m === 'register' ? 'btn-primary' : 'btn-ghost');
+      document.getElementById('authSubmit').textContent = m === 'login' ? '登 录' : '注 册';
+      document.querySelector('#authMask h3').textContent = m === 'login' ? '🔐 用户登录' : '✨ 注册新用户';
+    }
+    async function doAuth() {
+      const username = document.getElementById('authUser').value.trim();
+      const password = document.getElementById('authPass').value;
+      if (!username) return ION.toast('请输入用户名', 'error');
+      if (!password || password.length < 4) return ION.toast('密码至少 4 位', 'error');
+      try {
+        const r = await ION.postJson('/auth/' + authMode, { username, password });
+        if (!r.success) return ION.toast(r.message || '操作失败', 'error');
+        me = r.data;
+        sessionStorage.setItem('ionUser', JSON.stringify(me));
+        ION.toast(authMode === 'login' ? `欢迎回来，${me.username}` : '注册成功，已自动登录', 'success');
+        applyAuth();
+      } catch (e) { ION.toast('请求失败，请检查服务器连接', 'error'); }
+    }
+    function logout() {
+      if (!confirm('退出登录？')) return;
+      me = null;
+      sessionStorage.removeItem('ionUser');
+      sessionStorage.removeItem('ionMyPlate');
+      location.reload();
+    }
+    function applyAuth() {
+      const logged = !!me;
+      document.getElementById('authMask').classList.toggle('show', !logged);
+      document.getElementById('userBadge').style.display = logged ? '' : 'none';
+      document.getElementById('btnLogout').style.display = logged ? '' : 'none';
+      if (logged) {
+        document.getElementById('userNameTxt').textContent = `${me.username} · ${me.userId}`;
+        loadDetails();
+      }
+    }
+
+    /* ===== 历史详单 ===== */
+    const dt = s => s ? String(s).replace('T', ' ') : '—';
+    async function loadDetails() {
+      if (!me) return;
+      const body = document.getElementById('detailRows');
+      try {
+        const r = await ION.getJson('/billing/details?userId=' + encodeURIComponent(me.userId));
+        if (!r.success) { body.innerHTML = `<tr><td colspan="11" class="empty">${r.message || '查询失败'}</td></tr>`; return; }
+        const rows = r.data || [];
+        if (!rows.length) { body.innerHTML = '<tr><td colspan="11" class="empty">暂无充电详单，完成一次充电后自动生成</td></tr>'; return; }
+        body.innerHTML = rows.map(d => `<tr>
+          <td>${d.detailId || '—'}</td>
+          <td>${dt(d.createdAt)}</td>
+          <td>${d.carId || '—'}</td>
+          <td>${(d.pileId || '—').replace('P_', '')}</td>
+          <td class="num">${F.num(d.chargeAmount, 2)} 度</td>
+          <td class="num">${F.num(d.chargeDuration, 1)} 分</td>
+          <td>${dt(d.startTime)}</td>
+          <td>${dt(d.endTime)}</td>
+          <td class="num">¥${F.money(d.chargeFee)}</td>
+          <td class="num">¥${F.money(d.serviceFee)}</td>
+          <td class="num"><b style="color:var(--energy)">¥${F.money(d.subtotalFee)}</b></td>
+        </tr>`).join('');
+      } catch (e) { body.innerHTML = '<tr><td colspan="11" class="empty">查询失败，请检查服务器连接</td></tr>'; }
+    }
 
     function selectMode(m) {
       selectedMode = m;
@@ -158,6 +280,7 @@
     });
 
     async function submitRequest() {
+      if (!me) { applyAuth(); return ION.toast('请先登录', 'error'); }
       const plate = document.getElementById('plate').value.trim().toUpperCase();
       const battery = parseFloat(document.getElementById('battery').value);
       const amount = parseFloat(document.getElementById('amtRange').value);
@@ -167,12 +290,13 @@
       if (amount > battery) return ION.toast('充电量不能超过电池容量', 'error');
       try {
         const r = await ION.postJson('/charging/request', {
-          carId: plate, batteryCapacity: battery, requestMode: selectedMode, requestAmount: amount
+          carId: plate, batteryCapacity: battery, requestMode: selectedMode, requestAmount: amount,
+          userId: me.userId
         });
         if (r.success) {
           ION.toast('充电申请已提交', 'success');
           myPlate = plate;
-          localStorage.setItem('ionMyPlate', plate);
+          sessionStorage.setItem('ionMyPlate', plate);
           currentReq = { carId: plate, requestStatus: 'WAITING', requestMode: selectedMode === 'F' ? 'FAST' : 'TRICKLE', requestAmount: amount, queueNum: r.data && r.data.queueNum };
           prevStatus = 'WAITING';
           startPolling(); render();
@@ -215,7 +339,7 @@
 
     function finishTracking() {
       currentReq = null; prevStatus = null;
-      localStorage.removeItem('ionMyPlate');
+      sessionStorage.removeItem('ionMyPlate');
       render();
     }
 
@@ -233,9 +357,9 @@
           if ((st === 'FINISHED') && prevStatus && prevStatus !== 'FINISHED') {
             const b = await ION.getJson('/billing/bill?carId=' + encodeURIComponent(myPlate));
             if (b.success && b.data && b.data.length) showBill(b.data[b.data.length - 1]);
-            currentReq = null; prevStatus = 'FINISHED'; localStorage.removeItem('ionMyPlate'); render(); return;
+            currentReq = null; prevStatus = 'FINISHED'; sessionStorage.removeItem('ionMyPlate'); render(); return;
           }
-          if (st === 'CANCELLED' || st === 'FINISHED') { currentReq = null; localStorage.removeItem('ionMyPlate'); render(); return; }
+          if (st === 'CANCELLED' || st === 'FINISHED') { currentReq = null; sessionStorage.removeItem('ionMyPlate'); render(); return; }
           // 充电中 -> 回到排队/中断：充电桩故障被重新调度，提示用户（已充部分已出账单，剩余电量自动重新排队）
           if (prevStatus === 'CHARGING' && (st === 'WAITING' || st === 'QUEUED_AT_PILE' || st === 'CALLED' || st === 'INTERRUPTED')) {
             ION.toast('充电桩故障：已充电量已出账单，剩余电量已重新排队', 'error');
@@ -332,14 +456,31 @@
       return rows.map(([k, v]) => `<div class="detail-row"><span>${k}</span><b>${v}</b></div>`).join('');
     }
 
-    function showBill(b) {
+    async function showBill(b) {
       if (!b) return;
-      document.getElementById('billCar').textContent = (b.carId || myPlate || '') + ' · 账单已生成';
-      document.getElementById('billBody').innerHTML = `
+      document.getElementById('billCar').textContent = (b.carId || myPlate || '') + ' · 账单 ' + (b.billId || '');
+      let detailRowsHtml = '';
+      try {
+        // 拉取详单，把要求的字段（详单编号/生成时间/桩号/电量/时长/起止时间）一并展示
+        const r = await ION.getJson('/billing/detail/' + encodeURIComponent(b.billId));
+        if (r.success && r.data && r.data.length) {
+          const d = r.data[r.data.length - 1];
+          detailRowsHtml = `
+            <div class="receipt-row"><span>详单编号</span><b>${d.detailId || '—'}</b></div>
+            <div class="receipt-row"><span>生成时间</span><b>${dt(d.createdAt)}</b></div>
+            <div class="receipt-row"><span>充电桩</span><b>${(d.pileId || '—').replace('P_', '')}</b></div>
+            <div class="receipt-row"><span>充电电量</span><b>${F.num(d.chargeAmount, 2)} 度</b></div>
+            <div class="receipt-row"><span>充电时长</span><b>${F.num(d.chargeDuration, 1)} 分钟</b></div>
+            <div class="receipt-row"><span>启动时间</span><b>${dt(d.startTime)}</b></div>
+            <div class="receipt-row"><span>停止时间</span><b>${dt(d.endTime)}</b></div>`;
+        }
+      } catch (e) { /* 详单获取失败时仅展示费用合计 */ }
+      document.getElementById('billBody').innerHTML = detailRowsHtml + `
         <div class="receipt-row"><span>充电费用</span><b>¥${F.money(b.totalChargeFee)}</b></div>
         <div class="receipt-row"><span>服务费用</span><b>¥${F.money(b.totalServiceFee)}</b></div>
         <div class="receipt-row total"><span>合计</span><b>¥${F.money(b.totalFee)}</b></div>`;
       document.getElementById('billMask').classList.add('show');
+      loadDetails();
     }
     function closeBill() {
       document.getElementById('billMask').classList.remove('show');
@@ -348,11 +489,12 @@
     }
 
     ION.connectStatus(d => { station = d; if (myPlate) render(); });
-    // 恢复上次会话：刷新或重开页面后自动继续跟踪进行中的充电
+    // 恢复上次会话：刷新页面后自动继续跟踪进行中的充电（仅限本标签页）
     (function restoreSession() {
-      const saved = localStorage.getItem('ionMyPlate');
+      const saved = sessionStorage.getItem('ionMyPlate');
       if (saved) { document.getElementById('plate').value = saved; myPlate = saved; startPolling(); }
     })();
+    applyAuth();
     render();
   </script>
 </body>

@@ -61,10 +61,12 @@ public class StatusBroadcaster {
             TariffPolicy policy = queueMapper.getCurrentTariffPolicy();
             LocalDateTime now = LocalDateTime.now();
 
-            // 车牌 -> 电池容量，便于排队表展示（一次查询，避免逐车查询）
+            // 车牌 -> 电池容量 / 所属用户，便于排队表展示（一次查询，避免逐车查询）
             Map<String, Double> capacityByCar = new HashMap<>();
+            Map<String, String> userByCar = new HashMap<>();
             for (Vehicle v : requestMapper.selectAllVehicles()) {
                 capacityByCar.put(v.getPlateNumber(), v.getBatteryCapacity());
+                userByCar.put(v.getPlateNumber(), v.getUserId());
             }
             // 桩号映射，便于排队表展示「在 T3 排队」
             Map<String, String> pileNoById = piles.stream()
@@ -138,6 +140,7 @@ public class StatusBroadcaster {
                 Map<String, Object> row = new HashMap<>();
                 row.put("queueNum", r.getQueueNum());
                 row.put("carId", r.getCarId());
+                row.put("userId", userByCar.get(r.getCarId()));
                 row.put("mode", r.getRequestMode());           // FAST / TRICKLE
                 row.put("requestAmount", r.getRequestAmount());
                 row.put("status", r.getRequestStatus());        // WAITING / QUEUED_AT_PILE / CALLED
@@ -145,7 +148,17 @@ public class StatusBroadcaster {
                 row.put("pileNo", r.getPileId() != null ? pileNoById.get(r.getPileId()) : null);
                 row.put("queuePosition", r.getQueuePosition());
                 row.put("batteryCapacity", capacityByCar.get(r.getCarId()));
-                row.put("requestTime", r.getRequestTime() != null ? r.getRequestTime().format(HM) : null);
+                if (r.getRequestTime() != null) {
+                    // 排队时长与提交时刻均换算到仿真时间轴（未启用仿真时钟时即真实值）
+                    LocalDateTime vReq = com.charging.station.util.SimClock.toVirtual(r.getRequestTime());
+                    row.put("requestTime", vReq.format(HM));
+                    long waitSec = java.time.Duration.between(vReq,
+                            com.charging.station.util.SimClock.nowVirtual()).getSeconds();
+                    row.put("waitMinutes", Math.max(0, waitSec) / 60.0);
+                } else {
+                    row.put("requestTime", null);
+                    row.put("waitMinutes", 0.0);
+                }
                 return row;
             }).collect(Collectors.toList());
 

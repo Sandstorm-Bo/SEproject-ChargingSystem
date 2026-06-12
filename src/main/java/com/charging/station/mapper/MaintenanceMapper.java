@@ -2,12 +2,17 @@ package com.charging.station.mapper;
 
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
+
+import java.util.List;
+import java.util.Map;
 
 /**
  * 运维/统计辅助 Mapper（纯增量，供监控大屏与运维控制台使用）。
  * - sumRevenue：累计营收（账单总额之和），用于大屏 KPI。
+ * - selectReport：按时间维度 × 充电桩聚合详单，生成报表行。
  * - reset*：一键重置充电业务数据（等价 reset_db.sh，供控制台「重置」按钮使用）。
  */
 @Mapper
@@ -16,6 +21,24 @@ public interface MaintenanceMapper {
     /** 累计营收：所有账单总费用之和（元） */
     @Select("SELECT COALESCE(SUM(total_fee), 0) FROM bill")
     double sumRevenue();
+
+    /**
+     * 报表聚合：按 fmt 指定的时间粒度（日 %Y-%m-%d / 周 %x-W%v / 月 %Y-%m）
+     * 与充电桩分组，统计累计充电次数、时长、电量与各项费用。
+     * 详单 start_time 已是仿真时间轴时刻，报表时间维度与验收场景一致。
+     */
+    @Select("SELECT DATE_FORMAT(d.start_time, #{fmt}) AS time, "
+            + "p.pile_no AS pileNo, d.pile_id AS pileId, "
+            + "COUNT(*) AS chargeCount, "
+            + "ROUND(SUM(d.charge_duration), 1) AS totalDuration, "
+            + "ROUND(SUM(d.charge_amount), 2) AS totalAmount, "
+            + "ROUND(SUM(d.charge_fee), 2) AS totalChargeFee, "
+            + "ROUND(SUM(d.service_fee), 2) AS totalServiceFee, "
+            + "ROUND(SUM(d.subtotal_fee), 2) AS totalFee "
+            + "FROM detailed_list d JOIN charging_pile p ON d.pile_id = p.pile_id "
+            + "GROUP BY time, pileNo, pileId "
+            + "ORDER BY time DESC, pileNo")
+    List<Map<String, Object>> selectReport(@Param("fmt") String fmt);
 
     // ---- 一键重置（按外键依赖顺序：子表先删） ----
 

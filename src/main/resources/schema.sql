@@ -3,6 +3,7 @@
 
 -- 删除已存在的表
 DROP TABLE IF EXISTS dispatch_record;
+DROP TABLE IF EXISTS sys_user;
 DROP TABLE IF EXISTS fault_record;
 DROP TABLE IF EXISTS queue_item;
 DROP TABLE IF EXISTS detailed_list;
@@ -15,16 +16,29 @@ DROP TABLE IF EXISTS vehicle;
 DROP TABLE IF EXISTS charging_pile;
 DROP TABLE IF EXISTS tariff_policy;
 
+-- 0. 用户表（客户端注册/登录）
+CREATE TABLE sys_user (
+    user_id VARCHAR(50) PRIMARY KEY COMMENT '用户编号',
+    username VARCHAR(30) NOT NULL COMMENT '用户名',
+    password_hash CHAR(64) NOT NULL COMMENT '口令摘要 SHA-256(salt+password)',
+    salt CHAR(16) NOT NULL COMMENT '摘要盐值',
+    role VARCHAR(10) NOT NULL DEFAULT 'USER' COMMENT '角色 USER/ADMIN',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '注册时间',
+    UNIQUE KEY uk_username (username)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统用户表';
+
 -- 1. 车辆表
 CREATE TABLE vehicle (
     vehicle_id VARCHAR(50) PRIMARY KEY COMMENT '车辆编号',
+    user_id VARCHAR(50) COMMENT '所属用户编号',
     plate_number VARCHAR(20) NOT NULL COMMENT '车牌号',
     vehicle_type VARCHAR(50) COMMENT '车辆类型',
     battery_capacity DOUBLE NOT NULL DEFAULT 100 COMMENT '电池总容量（度）',
     current_battery_level DOUBLE DEFAULT 0 COMMENT '当前电量（度）',
     car_state VARCHAR(20) DEFAULT 'IDLE' COMMENT '当前状态',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_plate (plate_number)
+    INDEX idx_plate (plate_number),
+    INDEX idx_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='车辆信息表';
 
 -- 2. 充电桩表
