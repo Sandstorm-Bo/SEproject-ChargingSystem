@@ -160,17 +160,17 @@ public class DispatchService {
         pileMapper.updatePileState(faultPile);
         recordFault(pileId, "PRIORITY", "优先级故障调度");
 
-        // 2. 中断正在充电的车辆：已充部分出账单，剩余电量随其请求重新入队
+        // 2. 中断正在充电的车辆：按已充量计费并标记为中断(终态)，剩余电量不重排（业务规则 6.3）
         ChargingRequest interrupted = null;
         ChargingSession activeSession = sessionMapper.getActiveSessionByPileId(pileId);
         if (activeSession != null) {
-            interrupted = interruptSessionAndGenerateBill(activeSession, faultPile);
+            interrupted = interruptSessionAndGenerateBill(activeSession, faultPile, false);
         }
 
         // 3. 获取故障桩排队区中尚未开始充电的车辆。
         //    必须从 DB 实查：queueMapper.getChargingQueueByPileId 不会加载 requests 列表，
         //    faultQueue.drain() 恒返回空，导致排队车辆被遗弃（既往缺陷）。
-        //    被中断车辆排在最前（它原本已在充电，优先级最高）。
+        //    （正在充电的车已按业务规则 6.3 标记中断离开，interrupted 恒为 null，仅重排排队车。）
         List<ChargingRequest> affectedRequests = new ArrayList<>();
         if (interrupted != null) {
             affectedRequests.add(interrupted);
@@ -178,7 +178,7 @@ public class DispatchService {
         affectedRequests.addAll(queuedRequestsAtPile(pileId));
         resetPileQueueLength(pileId);
 
-        // 4. 受影响车辆按原相对顺序优先迁回等候区。其 requestTime 早于新到车辆，
+        // 4. 受影响（尚未开始充电）的车辆按原相对顺序优先迁回等候区。其 requestTime 早于新到车辆，
         //    dispatchWhenEmptySlot 按 requestTime 升序重新分配时自然优先于等候区其他车辆。
         requeueToWaiting(affectedRequests, RequestMode.fromString(faultPile.getPileType()));
 
@@ -209,11 +209,11 @@ public class DispatchService {
         pileMapper.updatePileState(faultPile);
         recordFault(pileId, "TIME_ORDER", "时间顺序故障调度");
 
-        // 2. 中断正在充电的车辆：已充部分出账单，剩余电量随其请求参与重排
+        // 2. 中断正在充电的车辆：按已充量计费并标记为中断(终态)，剩余电量不参与重排（业务规则 6.3）
         ChargingRequest interrupted = null;
         ChargingSession activeSession = sessionMapper.getActiveSessionByPileId(pileId);
         if (activeSession != null) {
-            interrupted = interruptSessionAndGenerateBill(activeSession, faultPile);
+            interrupted = interruptSessionAndGenerateBill(activeSession, faultPile, false);
         }
 
         // 3. 获取故障桩排队区中尚未开始充电的车辆（从 DB 实查，原因同优先级调度）
@@ -353,7 +353,7 @@ public class DispatchService {
         ChargingRequest interrupted = null;
         ChargingSession activeSession = sessionMapper.getActiveSessionByPileId(pileId);
         if (activeSession != null) {
-            interrupted = interruptSessionAndGenerateBill(activeSession, pile);
+            interrupted = interruptSessionAndGenerateBill(activeSession, pile, true);
         }
 
         // 桩前排队车辆迁回等候区
@@ -416,13 +416,16 @@ public class DispatchService {
     private static final double REMAINING_EPSILON = 0.01;
 
     /**
-     * 中断会话并对已充部分生成账单，返回需要重新入队的请求（其 requestAmount 已更新为
-     * 剩余未充电量并持久化），由调用方放回等候区重新调度。
-     * 两种不返回请求的情况：
-     * - 故障瞬间恰好已充满（剩余 < 0.01 度）：按正常完成处理；
-     * - 请求已不处于 CHARGING（被并发结束/取消）：不重复入队。
+     * 中断会话并对已充部分生成账单（本次充电过程对应一条详单）。
+     * <p>{@code requeueRemaining=false}（充电桩故障，对应第一次报告业务规则 6.3）：正在该桩充电的
+     * 车辆按已完成电量计费并【标记为中断】(终态)，剩余电量不重新入队；仅"尚未开始充电"的排队车
+     * 由调用方按公平原则重排。
+     * <p>{@code requeueRemaining=true}（管理员手动关桩，属自有功能、规范未覆盖）：把剩余电量作为新的
+     * 请求量持久化并返回，由调用方放回等候区继续充电。
+     * 返回 null 的情况：故障(终态离开)；剩余 &lt; 0.01 度按充满处理；请求已不在 CHARGING(并发结束/取消)。
      */
-    private ChargingRequest interruptSessionAndGenerateBill(ChargingSession session, ChargingPile pile) {
+    private ChargingRequest interruptSessionAndGenerateBill(ChargingSession session, ChargingPile pile,
+                                                            boolean requeueRemaining) {
         // 计算当前充电量和费用（启用跨时段分段计费）
         TariffPolicy policy = queueMapper.getCurrentTariffPolicy();
         Double currentAmount = session.calculateCurrentAmount(pile.getRatedPower(), java.time.LocalDateTime.now());
@@ -434,7 +437,7 @@ public class DispatchService {
         session.interrupt(currentAmount, currentDuration, chargeFee, serviceFee);
         sessionMapper.updateChargingSession(session);
 
-        // 生成账单
+        // 生成账单（本次充电过程对应一条详单）
         Bill bill = Bill.createFromSession(session);
         bill.setBillId("BILL-INT-" + java.util.UUID.randomUUID().toString().substring(0, 8));
         billMapper.insertBill(bill);
@@ -451,14 +454,27 @@ public class DispatchService {
         double remaining = Math.max(0.0,
                 (req.getRequestAmount() != null ? req.getRequestAmount() : 0.0) - currentAmount);
         remaining = Math.round(remaining * 100) / 100.0;
+
+        if (!requeueRemaining) {
+            // 故障(业务规则 6.3)：充电车按已充量计费并标记为中断(终态)，剩余电量不重排；恰好充满则记为完成
+            if (remaining < REMAINING_EPSILON) {
+                req.markFinished();
+                requestMapper.updateVehicleState(session.getCarId(), CarState.FINISHED.name());
+            } else {
+                req.interruptByFault(req.getRequestAmount()); // 状态置 INTERRUPTED 终态，请求量不变
+                requestMapper.updateVehicleState(session.getCarId(), CarState.INTERRUPTED.name());
+            }
+            requestMapper.updateRequestStatus(req);
+            return null;
+        }
+
+        // 管理员手动关桩(自有功能)：剩余电量重新入队，由调用方 requeueToWaiting 放回等候区继续充电。
         if (remaining < REMAINING_EPSILON) {
             req.markFinished();
             requestMapper.updateRequestStatus(req);
             requestMapper.updateVehicleState(session.getCarId(), CarState.FINISHED.name());
             return null;
         }
-
-        // 标记故障中断并把请求电量改为剩余量；随后由调用方 requeueToWaiting 放回等候区。
         // requestTime 保持原值不变，等候区按提交时间排序时它天然排在后来车辆之前（公平性保证）。
         req.interruptByFault(remaining);
         requestMapper.updateRequestAmount(req);

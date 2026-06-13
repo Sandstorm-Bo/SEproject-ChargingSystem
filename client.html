@@ -31,9 +31,8 @@
           <div class="brand-sub" style="font-size:9.5px;">Charge Your Drive</div>
         </div>
       </div>
+      <!-- 用户端与管理员端相互独立：此处不提供通往调度盘/运维控制台的入口 -->
       <nav class="cmd-nav">
-        <a class="cmd-link" href="admin.html">调度盘</a>
-        <a class="cmd-link" href="console.html">运维控制台</a>
         <a class="cmd-link active">用户端</a>
       </nav>
       <div class="row" style="gap:10px;">
@@ -201,6 +200,8 @@
     let authMode = 'login';
     let me = null;             // {userId, username}
     try { me = JSON.parse(sessionStorage.getItem('ionUser') || 'null'); } catch (e) { me = null; }
+    // 客户端与管理员端分离：管理员账号不得登录用户端，清除可能遗留的管理员登录态
+    if (me && me.role === 'ADMIN') { me = null; sessionStorage.removeItem('ionUser'); }
 
     function switchAuth(m) {
       authMode = m;
@@ -217,6 +218,8 @@
       try {
         const r = await ION.postJson('/auth/' + authMode, { username, password });
         if (!r.success) return ION.toast(r.message || '操作失败', 'error');
+        // 客户端与管理员端分离：管理员账号请走管理员端登录，禁止在用户端操作
+        if (r.data && r.data.role === 'ADMIN') return ION.toast('管理员账号请前往管理员端（调度盘 / 运维控制台）登录', 'error');
         me = r.data;
         sessionStorage.setItem('ionUser', JSON.stringify(me));
         ION.toast(authMode === 'login' ? `欢迎回来，${me.username}` : '注册成功，已自动登录', 'success');
@@ -354,15 +357,24 @@
         const r = await ION.getJson('/charging/car/' + encodeURIComponent(myPlate));
         if (r.success && r.data) {
           const st = r.data.requestStatus;
+          // 充电桩故障中断(终态)：已按已充电量出账，展示部分账单后结束跟踪（业务规则6.3：剩余电量不重排）
+          if (st === 'INTERRUPTED') {
+            if (prevStatus === 'CHARGING') {
+              ION.toast('充电桩故障：本次充电已按已充电量结算', 'error');
+              const b = await ION.getJson('/billing/bill?carId=' + encodeURIComponent(myPlate));
+              if (b.success && b.data && b.data.length) showBill(b.data[b.data.length - 1]);
+            }
+            currentReq = r.data; prevStatus = 'INTERRUPTED'; sessionStorage.removeItem('ionMyPlate'); render(); return;
+          }
           if ((st === 'FINISHED') && prevStatus && prevStatus !== 'FINISHED') {
             const b = await ION.getJson('/billing/bill?carId=' + encodeURIComponent(myPlate));
             if (b.success && b.data && b.data.length) showBill(b.data[b.data.length - 1]);
             currentReq = null; prevStatus = 'FINISHED'; sessionStorage.removeItem('ionMyPlate'); render(); return;
           }
           if (st === 'CANCELLED' || st === 'FINISHED') { currentReq = null; sessionStorage.removeItem('ionMyPlate'); render(); return; }
-          // 充电中 -> 回到排队/中断：充电桩故障被重新调度，提示用户（已充部分已出账单，剩余电量自动重新排队）
-          if (prevStatus === 'CHARGING' && (st === 'WAITING' || st === 'QUEUED_AT_PILE' || st === 'CALLED' || st === 'INTERRUPTED')) {
-            ION.toast('充电桩故障：已充电量已出账单，剩余电量已重新排队', 'error');
+          // 充电中 -> 回到排队：管理员关闭充电桩（自有功能），剩余电量重新排队
+          if (prevStatus === 'CHARGING' && (st === 'WAITING' || st === 'QUEUED_AT_PILE' || st === 'CALLED')) {
+            ION.toast('充电桩已停止服务：已充电量已出账单，剩余电量已重新排队', 'error');
           }
           currentReq = r.data; prevStatus = st;
         }
@@ -429,12 +441,11 @@
           ['状态', '<span class="pill idle"><span class="dot"></span>桩前排队</span>']
         ]);
       } else if (st === 'INTERRUPTED') {
-        // 故障中断瞬时态：后端会在同一事务内把剩余电量放回等候区，这里兜底展示，避免误显示为默认等待中
-        setBar('wait', '⚠️', '充电中断', `车辆 ${myPlate} 所在充电桩发生故障，剩余电量将自动重新排队`, false);
+        // 故障中断(终态)：业务规则6.3——充电桩故障时正在充电的车按已充电量计费并标记中断，剩余电量不重排
+        setBar('done', '⚠️', '充电已中断', `车辆 ${myPlate} 所在充电桩发生故障，本次充电已按已充电量结算`, false);
         body.innerHTML = detailRows([
-          ['排队号', currentReq.queueNum || '—'], ['模式', modeTxt],
-          ['剩余电量', `${F.num(currentReq.requestAmount, 1)} 度`],
-          ['状态', '<span class="pill wait"><span class="dot"></span>故障中断 · 等待重新调度</span>']
+          ['模式', modeTxt],
+          ['状态', '<span class="pill"><span class="dot"></span>故障中断 · 已结算</span>']
         ]);
       } else { // WAITING
         let ahead = '';
