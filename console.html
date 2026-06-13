@@ -89,21 +89,61 @@
 
       <!-- 右：控制 -->
       <div class="col">
+        <section class="card rise" style="--d:0">
+          <div class="section-head">
+            <div class="section-title"><span class="bar"></span>验收用例 · 一键完整演示</div>
+            <span class="chip mono flat" id="demoState">未运行</span>
+          </div>
+          <p class="mute" style="font-size:11.5px;margin-bottom:10px;">导入官方 42 条验收事件（06:00–11:35）：自动【重建官方拓扑(快2·慢3·等候区10·队列M2) + 清空数据 + 锚定仿真时钟 06:00 + 开启自动调度】，再按**虚拟时刻**逐条注入 申请/取消/改量/故障/恢复。注入后由系统自动调度，左侧充电桩监控与系统日志即为完整流程演示。故障策略取上方「故障调度方式·7」的选择。</p>
+          <div class="row" style="gap:8px;margin-bottom:10px;">
+            <div class="grow">
+              <div class="field-label" style="margin-bottom:5px;">演示倍速 <span class="hint">真实秒→仿真秒</span></div>
+              <select class="input mono" id="demoSpeed">
+                <option value="10">10×（验收原速 ~33min）</option>
+                <option value="30">30×（约 11min）</option>
+                <option value="60" selected>60×（约 5.5min）</option>
+                <option value="120">120×（约 2.8min）</option>
+                <option value="240">240×（约 1.4min）</option>
+              </select>
+            </div>
+            <div class="grow">
+              <div class="field-label" style="margin-bottom:5px;">注入进度</div>
+              <div class="input mono" id="demoProgress" style="display:flex;align-items:center;height:38px;">0 / 43</div>
+            </div>
+          </div>
+          <div class="row" style="gap:8px;">
+            <button class="btn btn-primary" style="flex:2;" id="demoStart" onclick="startDemo()">▶ 导入并开始演示</button>
+            <button class="btn btn-ghost" style="flex:1;" id="demoStop" onclick="stopDemo()" disabled>⏹ 停止</button>
+          </div>
+          <div id="demoNext" class="mono" style="font-size:11.5px;margin-top:11px;color:var(--energy);min-height:18px;line-height:1.6;"></div>
+        </section>
+
+        <section class="card rise" style="--d:0">
+          <div class="section-head">
+            <div class="section-title"><span class="bar"></span>调度方式总控</div>
+            <span class="chip mono" id="autoState">自动调度…</span>
+          </div>
+          <p class="mute" style="font-size:11.5px;margin-bottom:10px;">默认「自动叫号调度」：等候区车辆按最短完成时长自动入桩。暂停后车辆停留等候区，可改用下方 2.8 批量调度 / 指定充电桩 / 故障调度等方式手动接管——以演示并切换各种调度策略。</p>
+          <div class="row" style="gap:8px;">
+            <button class="btn btn-success" style="flex:1;" onclick="setAuto(true)">▶ 开启自动调度</button>
+            <button class="btn btn-warn" style="flex:1;" onclick="setAuto(false)">⏸ 暂停自动调度</button>
+          </div>
+        </section>
+
         <section class="card rise" style="--d:1">
-          <div class="section-head"><div class="section-title"><span class="bar"></span>故障调度策略</div></div>
-          <select class="input" id="strategy" style="margin-bottom:14px;">
-            <option value="priority">🔺 优先级调度（故障车辆优先重排）</option>
-            <option value="timeorder">⏱ 时间顺序调度（全体重排）</option>
+          <div class="section-head">
+            <div class="section-title"><span class="bar"></span>故障调度方式 · 7</div>
+            <span class="section-hint">验收随机选择策略</span>
+          </div>
+          <div class="field-label">选择调度策略（点击充电桩或下方按钮按此策略处理故障）</div>
+          <select class="input" id="strategy" style="margin:6px 0 12px;">
+            <option value="priority">🔺 7a 优先级调度（仅故障桩排队车优先重排）</option>
+            <option value="timeorder">⏱ 7b 时间顺序调度（故障桩+同类型桩未充电车合并按号重排）</option>
           </select>
           <div class="field-label">快捷故障注入</div>
-          <div class="row wrap" style="gap:8px;margin-bottom:12px;">
-            <button class="btn btn-warn btn-sm" onclick="setFault('P_F1')">F1 故障</button>
-            <button class="btn btn-warn btn-sm" onclick="setFault('P_F2')">F2 故障</button>
-            <button class="btn btn-warn btn-sm" onclick="setFault('P_T1')">T1 故障</button>
-            <button class="btn btn-warn btn-sm" onclick="setFault('P_T2')">T2 故障</button>
-            <button class="btn btn-warn btn-sm" onclick="setFault('P_T3')">T3 故障</button>
-          </div>
-          <button class="btn btn-success btn-block" onclick="recoverAll()">恢复全部充电桩</button>
+          <div class="row wrap" id="quickFault" style="gap:8px;margin-bottom:12px;"></div>
+          <button class="btn btn-success btn-block" onclick="recoverAll()">7c 恢复全部充电桩（恢复后同类型桩排队车按号重排）</button>
+          <p class="mute" style="font-size:11px;margin-top:8px;">故障：在充车停止计费出一条详单；按所选策略重排故障队列（重排期间暂停等候区叫号，完成后恢复）。恢复：若其它同类型桩仍有排队车，合并按排队号重排。</p>
         </section>
 
         <section class="card rise" style="--d:2">
@@ -131,15 +171,24 @@
 
         <section class="card rise" style="--d:2">
           <div class="section-head">
-            <div class="section-title"><span class="bar"></span>扩展调度 · 2.8</div>
+            <div class="section-title"><span class="bar"></span>扩展调度方式 · 2.8</div>
             <span class="section-hint">最小化总完成时长</span>
           </div>
-          <div class="row" style="gap:8px;margin-bottom:10px;">
+          <div class="field-label">8a 单次调度（按模式分配 · 同时叫多个号）</div>
+          <div class="row" style="gap:8px;margin:6px 0 8px;">
             <select class="input" id="batchMode" style="flex:2;"><option value="FAST">快充</option><option value="TRICKLE">慢充</option></select>
             <input class="input mono" id="batchSlots" type="number" value="2" min="1" max="6" style="flex:1;" title="空位数">
           </div>
-          <button class="btn btn-ghost btn-block" style="margin-bottom:8px;" onclick="batchSingle()">单次批量调度（指定模式+空位）</button>
-          <button class="btn btn-ghost btn-block" onclick="batchFull()">全站批量调度</button>
+          <button class="btn btn-ghost btn-block" style="margin-bottom:14px;" onclick="batchSingle()">8a 单次批量调度（指定模式 + 空位数）</button>
+
+          <div class="field-label">8b 批量调度（不区分模式 · 任意车任意桩）
+            <span class="chip mono" id="batchGate" style="float:right;">车位 0/0</span>
+          </div>
+          <label class="mute" style="display:flex;align-items:center;gap:6px;font-size:11.5px;margin:8px 0;">
+            <input type="checkbox" id="batchForce"> 忽略车位门槛（演示用，验收应等车位填满后自动可用）
+          </label>
+          <button class="btn btn-ghost btn-block" id="batchFullBtn" onclick="batchFull()">8b 全站批量调度</button>
+          <p class="mute" style="font-size:11px;margin-top:8px;">8b 仅当到站车辆 = 全部车位数(充电区+等候区)时触发；客户请求只看充电量，任意车可分配任意类型桩，使一批车总完成时长最短。</p>
         </section>
 
         <section class="card rise" style="--d:2">
@@ -195,12 +244,29 @@
             <button class="btn btn-ghost" data-v="240">240×</button>
           </div>
           <p class="mute" style="font-size:11px;margin-top:10px;">1 真实秒 = N 仿真秒，调整后立即生效（验收按 1:10 设为 10×）。</p>
-          <div class="field-label" style="margin-top:12px;">仿真起始时间 <span class="hint" id="simClockNow">未启用</span></div>
+          <div class="field-label" style="margin-top:12px;">仿真起始时间 <span class="hint" id="simClockNow">仿真时钟</span></div>
           <div class="row" style="gap:8px;">
             <input class="input mono" id="simStart" type="time" value="06:00" style="flex:1;">
             <button class="btn btn-primary btn-sm" onclick="setSimStart()">锚定</button>
           </div>
-          <p class="mute" style="font-size:11px;margin-top:8px;">把仿真时钟锚定到指定时刻（验收从 06:00 谷时开始）；电价时段与页面时钟随之切换。</p>
+          <p class="mute" style="font-size:11px;margin-top:8px;">仿真时钟为系统唯一时间源：起始时刻可在此设定（验收从 06:00 谷时开始），时间按上面的倍速流逝，页面时钟、电价时段、详单起止时刻均取此虚拟时间。</p>
+        </section>
+
+        <section class="card rise" style="--d:3">
+          <div class="section-head">
+            <div class="section-title"><span class="bar"></span>系统参数 · 验收可调</div>
+            <span class="section-hint">改后清空数据并重建桩</span>
+          </div>
+          <div class="row" style="gap:8px;margin-bottom:8px;">
+            <div class="grow"><div class="field-label" style="margin-bottom:5px;">快充桩数 <span class="hint">FastChargingPileNum</span></div><input class="input mono" id="cfgFast" type="number" min="0" max="20" value="2"></div>
+            <div class="grow"><div class="field-label" style="margin-bottom:5px;">慢充桩数 <span class="hint">TrickleChargingPileNum</span></div><input class="input mono" id="cfgTrickle" type="number" min="0" max="20" value="3"></div>
+          </div>
+          <div class="row" style="gap:8px;margin-bottom:10px;">
+            <div class="grow"><div class="field-label" style="margin-bottom:5px;">等候区容量 <span class="hint">WaitingAreaSize</span></div><input class="input mono" id="cfgWaiting" type="number" min="1" max="100" value="10"></div>
+            <div class="grow"><div class="field-label" style="margin-bottom:5px;">排队队列长度 <span class="hint">ChargingQueueLen M</span></div><input class="input mono" id="cfgQueueM" type="number" min="1" max="20" value="2"></div>
+          </div>
+          <button class="btn btn-primary btn-block" onclick="applyStationConfig()">⚙ 应用参数并重建充电站</button>
+          <p class="mute" style="font-size:11px;margin-top:8px;">按新数量重建快/慢充电桩与桩前队列、设置等候区容量与每桩队列长度 M；将清空所有充电请求/会话/账单（保留用户与车辆账号）。</p>
         </section>
 
         <section class="card rise" style="--d:4">
@@ -230,6 +296,29 @@
     ION.initServerBar();
     ION.startClock('clock');
     ION.adminGate();   // 管理员登录门：未登录弹出登录/注册浮层
+
+    let lastPiles = [];           // 最近一次广播的充电桩列表（供动态控件与“恢复全部”使用）
+    let _pileSig = '';            // 充电桩集合签名，集合变化时才重建下拉/按钮
+
+    // 充电桩集合可变（验收可调桩数）：据此动态重建 快捷故障/定时故障/指定桩/改功率 等控件
+    function syncPileControls(piles) {
+      const sig = piles.map(p => p.pileId).join(',');
+      if (sig === _pileSig) return;
+      _pileSig = sig;
+      const opts = piles.map(p => `<option value="${p.pileId}">${p.pileNo}</option>`).join('');
+      ['schedPile', 'assignPile', 'pwrPile'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        const cur = sel.value;
+        sel.innerHTML = opts;
+        if (piles.some(p => p.pileId === cur)) sel.value = cur;
+      });
+      const qf = document.getElementById('quickFault');
+      if (qf) {
+        qf.innerHTML = piles.map(p =>
+          `<button class="btn btn-warn btn-sm" onclick="setFault('${p.pileId}')">${p.pileNo} 故障</button>`).join('');
+      }
+    }
 
     function station(p) {
       const off = p.status === 'OFFLINE' || p.status === 'CLOSED';
@@ -268,6 +357,8 @@
 
     function update(data) {
       if (!data || !data.piles) return;
+      lastPiles = data.piles;
+      syncPileControls(data.piles);
       document.getElementById('stations').innerHTML = data.piles.map(station).join('');
       document.getElementById('sCharging').textContent = data.piles.filter(p => p.status === 'BUSY').length;
       document.getElementById('sWaiting').textContent = `${data.waitingAreaCount || 0} / ${data.queuedAtPileCount || 0}`;
@@ -283,7 +374,23 @@
         document.querySelectorAll('#speedPreset .btn').forEach(b => b.classList.toggle('on', +b.dataset.v === v));
       }
       const sc = document.getElementById('simClockNow');
-      if (sc) sc.textContent = data.simClockEnabled ? ('仿真 ' + (data.simTime || '')) : '未启用（真实时间）';
+      if (sc) sc.textContent = '仿真 ' + (data.simTime || '');
+
+      // 8b 批量调度车位门槛：到站/车位数，达标高亮、按钮高亮
+      const bg = data.batchGate;
+      const gateEl = document.getElementById('batchGate');
+      const fullBtn = document.getElementById('batchFullBtn');
+      if (bg && gateEl) {
+        gateEl.textContent = `车位 ${bg.arrived}/${bg.capacity}`;
+        gateEl.className = 'chip mono ' + (bg.ready ? 'live' : 'flat');
+        if (fullBtn) fullBtn.classList.toggle('btn-primary', !!bg.ready);
+      }
+      // 调度方式总控：自动调度运行状态
+      const as = document.getElementById('autoState');
+      if (as && data.autoDispatch !== undefined) {
+        as.textContent = data.autoDispatch ? '自动调度 · 运行中' : '自动调度 · 已暂停';
+        as.className = 'chip mono ' + (data.autoDispatch ? 'live' : 'wait');
+      }
 
       // 指定充电桩：等候区车辆下拉（仅集合变化时重建，避免打断已展开的下拉）
       const sel = document.getElementById('assignCar');
@@ -305,6 +412,28 @@
         document.getElementById('tfValley').value = data.tariff.valleyPrice;
         document.getElementById('tfService').value = data.tariff.serviceFee;
       }
+      // 系统参数：首帧预填当前拓扑（之后不覆盖管理员正在编辑的内容）
+      if (data.stationConfig && !window._cfgFilled) {
+        window._cfgFilled = true;
+        const c = data.stationConfig;
+        document.getElementById('cfgFast').value = c.fastNum;
+        document.getElementById('cfgTrickle').value = c.trickleNum;
+        document.getElementById('cfgWaiting').value = c.waitingSize;
+        document.getElementById('cfgQueueM').value = c.queueLen;
+      }
+    }
+
+    // ===== 系统参数（验收可调：桩数 / 等候区容量 / 队列长度 M）=====
+    async function applyStationConfig() {
+      const v = id => parseInt(document.getElementById(id).value, 10);
+      const fastNum = v('cfgFast'), trickleNum = v('cfgTrickle'), waitingSize = v('cfgWaiting'), queueLen = v('cfgQueueM');
+      if ([fastNum, trickleNum, waitingSize, queueLen].some(x => isNaN(x))) return log('请填写所有参数', 'error');
+      if (fastNum + trickleNum < 1) return log('至少需要 1 个充电桩', 'error');
+      if (!confirm(`应用新参数将清空所有充电数据并重建充电桩：\n快充 ${fastNum} · 慢充 ${trickleNum} · 等候区 ${waitingSize} · 队列M ${queueLen}\n继续？`)) return;
+      try {
+        const r = await ION.post('/monitor/station-config', { fastNum, trickleNum, waitingSize, queueLen });
+        log(r.success ? '⚙ ' + r.message : (r.message || '设置失败'), r.success ? 'success' : 'error');
+      } catch (e) { log('设置失败: ' + e.message, 'error'); }
     }
 
     // ===== 指定充电桩（YL-024）=====
@@ -378,17 +507,24 @@
       } catch (e) { log('故障调度失败: ' + e.message, 'error'); }
     }
     async function recoverAll() {
-      for (const p of ['P_F1', 'P_F2', 'P_T1', 'P_T2', 'P_T3']) { try { await ION.post('/dispatch/recover', { pileId: p }); } catch (e) {} }
+      const ids = (lastPiles.length ? lastPiles.map(p => p.pileId) : ['P_F1', 'P_F2', 'P_T1', 'P_T2', 'P_T3']);
+      for (const p of ids) { try { await ION.post('/dispatch/recover', { pileId: p }); } catch (e) {} }
       log('所有充电桩已恢复', 'success');
     }
-    async function batchSingle() {
-      const mode = document.getElementById('batchMode').value;
+    async function setAuto(enabled) {
+      try {
+        const r = await ION.post('/dispatch/auto', { enabled });
+        log(r.success ? r.message : (r.message || '切换失败'), enabled ? 'success' : 'warning');
+      } catch (e) { log('切换自动调度失败: ' + e.message, 'error'); }
+    }
+    async function batchSingle() {      const mode = document.getElementById('batchMode').value;
       const emptySlots = document.getElementById('batchSlots').value || 2;
       try { logPlan('单次批量调度', await ION.post('/dispatch/batch/single', { mode, emptySlots })); }
       catch (e) { log('调度失败: ' + e.message, 'error'); }
     }
     async function batchFull() {
-      try { logPlan('全站批量调度', await ION.post('/dispatch/batch/full')); }
+      const force = document.getElementById('batchForce').checked;
+      try { logPlan('全站批量调度', await ION.post('/dispatch/batch/full', { force })); }
       catch (e) { log('调度失败: ' + e.message, 'error'); }
     }
     function logPlan(title, r) {
@@ -468,6 +604,167 @@
       while (box.children.length > 60) box.removeChild(box.lastChild);
     }
     function clearLog() { document.getElementById('log').innerHTML = ''; log('日志已清空', 'info'); }
+
+    // ===== 验收用例 · 一键完整演示 =====
+    // 官方 42 条输入事件（06:00–11:35）+ 末尾 END，自动从 charging_sim.EVENTS 同步生成。
+    // 运行时按“虚拟时刻”逐条注入，由后端自动调度，左侧监控/日志即完整流程。
+    const ACCEPT_EVENTS = [
+      { t:'06:00', op:'A',  car:'V1', mode:'TRICKLE', amt:40, label:'申请 V1 慢充 40度' },
+      { t:'06:05', op:'A',  car:'V2', mode:'TRICKLE', amt:30, label:'申请 V2 慢充 30度' },
+      { t:'06:10', op:'A',  car:'V3', mode:'FAST', amt:100, label:'申请 V3 快充 100度' },
+      { t:'06:15', op:'A',  car:'V4', mode:'FAST', amt:120, label:'申请 V4 快充 120度' },
+      { t:'06:20', op:'O',  car:'V2', label:'取消/离开 V2' },
+      { t:'06:25', op:'A',  car:'V5', mode:'TRICKLE', amt:20, label:'申请 V5 慢充 20度' },
+      { t:'06:30', op:'A',  car:'V6', mode:'TRICKLE', amt:20, label:'申请 V6 慢充 20度' },
+      { t:'06:35', op:'A',  car:'V7', mode:'FAST', amt:110, label:'申请 V7 快充 110度' },
+      { t:'06:40', op:'A',  car:'V8', mode:'TRICKLE', amt:20, label:'申请 V8 慢充 20度' },
+      { t:'06:45', op:'A',  car:'V9', mode:'FAST', amt:105, label:'申请 V9 快充 105度' },
+      { t:'06:50', op:'A',  car:'V10', mode:'TRICKLE', amt:10, label:'申请 V10 慢充 10度' },
+      { t:'06:55', op:'A',  car:'V11', mode:'FAST', amt:110, label:'申请 V11 快充 110度' },
+      { t:'07:00', op:'A',  car:'V12', mode:'FAST', amt:90, label:'申请 V12 快充 90度' },
+      { t:'07:05', op:'A',  car:'V13', mode:'FAST', amt:110, label:'申请 V13 快充 110度' },
+      { t:'07:10', op:'A',  car:'V14', mode:'FAST', amt:95, label:'申请 V14 快充 95度' },
+      { t:'07:15', op:'A',  car:'V15', mode:'TRICKLE', amt:10, label:'申请 V15 慢充 10度' },
+      { t:'07:20', op:'A',  car:'V16', mode:'FAST', amt:60, label:'申请 V16 快充 60度' },
+      { t:'07:25', op:'A',  car:'V17', mode:'TRICKLE', amt:10, label:'申请 V17 慢充 10度' },
+      { t:'07:30', op:'A',  car:'V18', mode:'TRICKLE', amt:7.5, label:'申请 V18 慢充 7.5度' },
+      { t:'07:35', op:'A',  car:'V19', mode:'FAST', amt:75, label:'申请 V19 快充 75度' },
+      { t:'07:40', op:'A',  car:'V20', mode:'FAST', amt:95, label:'申请 V20 快充 95度' },
+      { t:'07:45', op:'A',  car:'V21', mode:'FAST', amt:95, label:'申请 V21 快充 95度' },
+      { t:'07:50', op:'A',  car:'V22', mode:'FAST', amt:70, label:'申请 V22 快充 70度' },
+      { t:'07:55', op:'A',  car:'V23', mode:'FAST', amt:80, label:'申请 V23 快充 80度' },
+      { t:'08:00', op:'A',  car:'V24', mode:'TRICKLE', amt:5, label:'申请 V24 慢充 5度' },
+      { t:'08:20', op:'A',  car:'V25', mode:'TRICKLE', amt:15, label:'申请 V25 慢充 15度' },
+      { t:'08:25', op:'F',  pile:'P_T1', label:'T1 故障注入' },
+      { t:'08:30', op:'A',  car:'V26', mode:'TRICKLE', amt:20, label:'申请 V26 慢充 20度' },
+      { t:'08:35', op:'A',  car:'V27', mode:'TRICKLE', amt:25, label:'申请 V27 慢充 25度' },
+      { t:'08:50', op:'F',  pile:'P_F1', label:'F1 故障注入' },
+      { t:'09:00', op:'A',  car:'V28', mode:'FAST', amt:30, label:'申请 V28 快充 30度（预期等候区已满被拒）' },
+      { t:'09:10', op:'O',  car:'V1', label:'取消/离开 V1（预期已故障中断，空操作）' },
+      { t:'09:15', op:'R',  pile:'P_T1', label:'T1 故障恢复' },
+      { t:'09:20', op:'O',  car:'V27', label:'取消/离开 V27' },
+      { t:'09:25', op:'C',  car:'V21', amt:35, label:'修改 V21 充电量→35度' },
+      { t:'09:30', op:'O',  car:'V19', label:'取消/离开 V19' },
+      { t:'09:35', op:'O',  car:'V28', label:'取消/离开 V28（预期无此车，空操作）' },
+      { t:'09:40', op:'C',  car:'V23', amt:40, label:'修改 V23 充电量→40度' },
+      { t:'09:50', op:'A',  car:'V29', mode:'TRICKLE', amt:30, label:'申请 V29 慢充 30度' },
+      { t:'09:55', op:'C',  car:'V14', amt:30, label:'修改 V14 充电量→30度' },
+      { t:'10:00', op:'A',  car:'V30', mode:'TRICKLE', amt:10, label:'申请 V30 慢充 10度' },
+      { t:'10:50', op:'R',  pile:'P_F1', label:'F1 故障恢复' },
+      { t:'11:35', op:'END', label:'调度结束（最后输入时刻；剩余车辆继续充电）' }
+    ];
+    let _demo = { running: false, i: 0, timer: null };
+
+    const _hhmmToMin = s => { const m = String(s || '').match(/(\d{1,2}):(\d{2})/); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+    async function _simNowMin() {
+      try { const r = await ION.getJson('/monitor/sim-clock'); return _hhmmToMin((r && r.data) || ''); }
+      catch (e) { return null; }
+    }
+    function _setDemoUI(running) {
+      document.getElementById('demoStart').disabled = running;
+      document.getElementById('demoStop').disabled = !running;
+      const st = document.getElementById('demoState');
+      st.textContent = running ? '运行中' : '未运行';
+      st.className = 'chip mono ' + (running ? 'live' : 'flat');
+      document.getElementById('demoProgress').textContent = `${_demo.i} / ${ACCEPT_EVENTS.length}`;
+    }
+
+    // 把一条事件翻译成对应的后端调用（与 client/admin 同一套 REST）
+    async function fireEvent(ev) {
+      try {
+        if (ev.op === 'A') {
+          const r = await ION.postJson('/charging/request',
+            { carId: ev.car, requestMode: ev.mode, requestAmount: ev.amt, batteryCapacity: Math.max(ev.amt, 200) });
+          log(r.success ? `▷ ${ev.t} ${ev.label}` : `▷ ${ev.t} ${ev.label} —— 被拒：${r.message || ''}`,
+              r.success ? 'success' : 'warning');
+        } else if (ev.op === 'O') {
+          const c = await ION.getJson('/charging/car/' + ev.car);
+          const st = c && c.data && c.data.requestStatus;
+          const pile = c && c.data && c.data.pileId;
+          if (st === 'CHARGING') {
+            const r = await ION.post('/charging/end', { carId: ev.car, pileId: pile });
+            log(`▷ ${ev.t} ${ev.car} 充电中离开 → 结束充电出账（${pile}）`, r.success ? 'warning' : 'error');
+          } else if (st === 'WAITING' || st === 'QUEUED_AT_PILE' || st === 'CALLED') {
+            const r = await ION.postJson('/charging/cancel', { carId: ev.car });
+            log(`▷ ${ev.t} ${ev.car} 取消（${F.carState(st)}）`, r.success ? 'warning' : 'error');
+          } else {
+            log(`▷ ${ev.t} ${ev.car} 取消无效（当前 ${F.carState(st) || '无此车'}）—— 空操作`, 'info');
+          }
+        } else if (ev.op === 'C') {
+          const r = await ION.postJson('/charging/amount', { carId: ev.car, newAmount: ev.amt });
+          log(r.success ? `▷ ${ev.t} ${ev.label}` : `▷ ${ev.t} ${ev.label} —— 失败：${r.message || ''}`,
+              r.success ? 'success' : 'warning');
+        } else if (ev.op === 'F') {
+          const strat = document.getElementById('strategy').value;
+          await ION.post('/dispatch/fault/' + strat, { pileId: ev.pile });
+          log(`▷ ${ev.t} ${ev.label} · ${strat === 'priority' ? '优先级' : '时间顺序'}策略`, 'warning');
+        } else if (ev.op === 'R') {
+          await ION.post('/dispatch/recover', { pileId: ev.pile });
+          log(`▷ ${ev.t} ${ev.label}`, 'success');
+        } else if (ev.op === 'END') {
+          log(`■ ${ev.t} 全部 42 条输入已注入完毕，演示完成（剩余车辆继续按调度充电至充满）`, 'success');
+        }
+      } catch (e) {
+        log(`▷ ${ev.t} ${ev.label} —— 请求异常：${e.message}`, 'error');
+      }
+    }
+
+    async function _demoTick() {
+      if (!_demo.running) return;
+      const nowMin = await _simNowMin();
+      if (nowMin == null) return;   // 时钟读取失败，下一轮再试
+      // 注入所有“虚拟时刻已到”的事件（严格按表顺序，避免跳号/重复）
+      while (_demo.running && _demo.i < ACCEPT_EVENTS.length && _hhmmToMin(ACCEPT_EVENTS[_demo.i].t) <= nowMin) {
+        await fireEvent(ACCEPT_EVENTS[_demo.i]);
+        _demo.i++;
+        document.getElementById('demoProgress').textContent = `${_demo.i} / ${ACCEPT_EVENTS.length}`;
+      }
+      const nx = ACCEPT_EVENTS[_demo.i];
+      const hh = String(Math.floor(nowMin / 60)).padStart(2, '0'), mm = String(nowMin % 60).padStart(2, '0');
+      document.getElementById('demoNext').textContent = nx
+        ? `仿真 ${hh}:${mm} · 下一条 ${nx.t} ${nx.label}` : '';
+      if (_demo.i >= ACCEPT_EVENTS.length) _finishDemo(true);
+    }
+    // 递归 setTimeout：等上一轮注入完成再排下一轮，杜绝 await 重入导致重复注入
+    async function _demoLoop() {
+      if (!_demo.running) return;
+      await _demoTick();
+      if (_demo.running) _demo.timer = setTimeout(_demoLoop, 250);
+    }
+    function _finishDemo(done) {
+      _demo.running = false;
+      if (_demo.timer) { clearTimeout(_demo.timer); _demo.timer = null; }
+      _setDemoUI(false);
+      if (done) document.getElementById('demoNext').textContent = '✔ 演示完成';
+    }
+
+    async function startDemo() {
+      if (_demo.running) return;
+      if (!confirm('一键演示会先【重建为官方拓扑(快2·慢3·等候区10·每桩队列M2)并清空充电数据】、锚定仿真时钟到 06:00、开启自动调度，然后按虚拟时刻自动注入 42 条验收事件。继续？')) return;
+      const speed = document.getElementById('demoSpeed').value || '60';
+      _demo = { running: true, i: 0, timer: null };
+      _setDemoUI(true);
+      log('—— 验收用例一键演示开始 ——', 'success');
+      try {
+        // 重建官方验收拓扑（快充2·慢充3·等候区10·每桩队列M=2，即"1充+2排=3车位/桩"）并清空充电数据，
+        // 保证每次演示都在标准参数下复现，避免历史遗留的非默认桩数（如多出的 F3）干扰结果。
+        await ION.post('/monitor/station-config', { fastNum: 2, trickleNum: 3, waitingSize: 10, queueLen: 2 });
+        await ION.post('/dispatch/auto', { enabled: true });   // 确保自动叫号调度开启（核心调度验收口径）
+        await ION.post('/monitor/sim-speed', { value: speed });
+        await ION.post('/monitor/sim-clock', { start: '06:00' }); // 最后锚定，确保起跑即 06:00
+        log(`已重建官方拓扑(快2·慢3·等候区10·队列M2)并清空 · 自动调度开启 · 倍速 ${speed}× · 锚定仿真时钟 06:00`, 'info');
+      } catch (e) {
+        log('初始化失败：' + e.message, 'error'); _finishDemo(false); return;
+      }
+      _demoLoop();   // 立即注入 06:00 事件并进入轮询
+    }
+    function stopDemo() {
+      if (!_demo.running) return;
+      const n = _demo.i;
+      _finishDemo(false);
+      document.getElementById('demoNext').textContent = `已停止（注入 ${n} 条）`;
+      log(`—— 演示已手动停止（已注入 ${n} 条事件）——`, 'warning');
+    }
 
     ION.connectStatus(update);
     log('运维控制台已就绪', 'success');

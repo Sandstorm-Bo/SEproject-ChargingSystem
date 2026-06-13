@@ -30,6 +30,12 @@
         WHERE queue_id = #{queueId}
     </update>
 
+    <!-- 插入充电桩前队列（重配拓扑用） -->
+    <insert id="insertChargingQueue">
+        INSERT INTO charging_queue (queue_id, pile_id, queue_len_m, current_length)
+        VALUES (#{queueId}, #{pileId}, #{queueLenM}, #{currentLength})
+    </insert>
+
     <!-- 查询所有充电桩队列 -->
     <select id="getAllChargingQueuesWithRequests" resultType="com.charging.station.domain.ChargingQueue">
         SELECT * FROM charging_queue

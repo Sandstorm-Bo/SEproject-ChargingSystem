@@ -11,7 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
@@ -38,6 +37,9 @@ public class ChargingApplicationService {
 
     @Autowired
     private DispatchService dispatchService;
+
+    @Autowired
+    private SchedulerTrigger schedulerTrigger;
 
     /**
      * 提交充电申请
@@ -77,7 +79,7 @@ public class ChargingApplicationService {
         request.setRequestAmount(dto.getRequestAmount());
         request.setRequestMode(dto.getRequestModeEnum());
         request.setQueueNum(QueueNumberGenerator.generate(dto.getRequestModeEnum()));
-        request.setRequestTime(LocalDateTime.now());
+        request.setRequestTime(SimClock.nowVirtual());
         request.setRequestStatus(CarState.WAITING);
 
         // 3. 持久化充电请求
@@ -90,6 +92,8 @@ public class ChargingApplicationService {
 
         // 5. 不在此处同步调度：调度由 ChargingScheduler 定时统一触发，
         //    使车辆提交后先停留在等候区（WAITING），保留可修改充电量/模式的窗口
+        // 事件驱动：提交后（事务提交时）触发一次对账——若有空闲匹配桩则立即叫号开充，否则停留等候区
+        schedulerTrigger.afterCommitReconcile();
         return request;
     }
 
@@ -166,7 +170,8 @@ public class ChargingApplicationService {
         // 5. 持久化
         requestMapper.updateRequestMode(request);
 
-        // 6. 调度由 ChargingScheduler 定时统一触发
+        // 6. 改模式后（事务提交时）触发对账：新模式下若有空闲桩可立即分配（如快充满改慢充而慢充有空位）
+        schedulerTrigger.afterCommitReconcile();
         return request;
     }
 
@@ -273,7 +278,7 @@ public class ChargingApplicationService {
         session.setCarId(carId);
         session.setPileId(pileId);
         session.setRequestAmount(request.getRequestAmount());
-        session.setStartTime(LocalDateTime.now());
+        session.setStartTime(SimClock.nowVirtual());
         session.setSessionStatus("进行中");
 
         // 3. 更新请求状态
@@ -295,6 +300,8 @@ public class ChargingApplicationService {
         // 7. 触发调度（队列空出位置）
         dispatchService.dispatchWhenEmptySlot();
 
+        // 事件驱动：开充后（事务提交时）对账——为本会话排定“充满”定时器、并填补腾出的排队位
+        schedulerTrigger.afterCommitReconcile();
         return session;
     }
 
@@ -310,15 +317,15 @@ public class ChargingApplicationService {
 
         // 计算实时充电量、时长与费用（结合 TariffPolicy，操作契约要求返回实时费用快照）
         ChargingPile pile = pileMapper.getPile(session.getPileId());
-        Double currentAmount = session.calculateCurrentAmount(pile.getRatedPower(), LocalDateTime.now());
-        Double currentDuration = session.calculateCurrentDuration(LocalDateTime.now());
+        Double currentAmount = session.calculateCurrentAmount(pile.getRatedPower(), SimClock.nowVirtual());
+        Double currentDuration = session.calculateCurrentDuration(SimClock.nowVirtual());
         session.setChargeAmount(currentAmount);
         session.setChargeDuration(currentDuration);
 
         TariffPolicy policy = queueMapper.getCurrentTariffPolicy();
         if (policy != null) {
-            // 电价时段按仿真时钟判定（未启用仿真时钟时即真实时间）
-            Double chargeFee = policy.calculateChargeFee(currentAmount, SimClock.toVirtual(session.getStartTime()).toLocalTime(), pile.getRatedPower());
+            // 电价时段按充电开始的虚拟时刻判定（startTime 已是仿真时间轴上的时刻）
+            Double chargeFee = policy.calculateChargeFee(currentAmount, session.getStartTime().toLocalTime(), pile.getRatedPower());
             Double serviceFee = policy.calculateServiceFee(currentAmount);
             session.setChargeFee(chargeFee);
             session.setServiceFee(serviceFee);
@@ -368,6 +375,8 @@ public class ChargingApplicationService {
         } else {
             throw new IllegalStateException("当前状态" + status + "无法取消");
         }
+        // 事件驱动：取消腾出等候/排队位后（事务提交时）对账，让后续车辆即时顶上
+        schedulerTrigger.afterCommitReconcile();
     }
 
     /**
@@ -387,9 +396,9 @@ public class ChargingApplicationService {
         TariffPolicy policy = queueMapper.getCurrentTariffPolicy();
 
         // 3. 计算最终充电量和费用（启用跨时段分段计费）
-        Double finalAmount = session.calculateCurrentAmount(pile.getRatedPower(), LocalDateTime.now());
+        Double finalAmount = session.calculateCurrentAmount(pile.getRatedPower(), SimClock.nowVirtual());
         Double finalDuration = finalAmount / pile.getRatedPower() * 60.0; // 时长由充电量/功率推导（分钟）
-        Double chargeFee = policy.calculateChargeFee(finalAmount, SimClock.toVirtual(session.getStartTime()).toLocalTime(), pile.getRatedPower());
+        Double chargeFee = policy.calculateChargeFee(finalAmount, session.getStartTime().toLocalTime(), pile.getRatedPower());
         Double serviceFee = policy.calculateServiceFee(finalAmount);
 
         // 4. 结束会话
@@ -418,6 +427,8 @@ public class ChargingApplicationService {
         // 8. 触发调度
         dispatchService.dispatchWhenEmptySlot();
 
+        // 事件驱动：结束后（事务提交时）对账——腾出的桩立即叫下一辆开充并排定其“充满”定时器
+        schedulerTrigger.afterCommitReconcile();
         return bill;
     }
 }

@@ -54,12 +54,18 @@ public class StatusBroadcaster {
     @Autowired
     private MaintenanceMapper maintenanceMapper;
 
+    @Autowired
+    private DispatchService dispatchService;
+
+    @Autowired
+    private MonitoringService monitoringService;
+
     @Scheduled(fixedRate = 1000)
     public void broadcastStatus() {
         try {
             List<ChargingPile> piles = pileMapper.selectAllPiles();
             TariffPolicy policy = queueMapper.getCurrentTariffPolicy();
-            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime now = com.charging.station.util.SimClock.nowVirtual();
 
             // 车牌 -> 电池容量 / 所属用户，便于排队表展示（一次查询，避免逐车查询）
             Map<String, Double> capacityByCar = new HashMap<>();
@@ -113,7 +119,7 @@ public class StatusBroadcaster {
                     pileData.put("chargedAmount", Math.round(amount * 100) / 100.0);
                     pileData.put("chargeProgress", progress);
                     if (policy != null) {
-                        double fee = policy.calculateChargeFee(amount, com.charging.station.util.SimClock.toVirtual(session.getStartTime()).toLocalTime(), pile.getRatedPower())
+                        double fee = policy.calculateChargeFee(amount, session.getStartTime().toLocalTime(), pile.getRatedPower())
                                 + policy.calculateServiceFee(amount);
                         pileData.put("currentCost", Math.round(fee * 100) / 100.0);
                     } else {
@@ -149,8 +155,8 @@ public class StatusBroadcaster {
                 row.put("queuePosition", r.getQueuePosition());
                 row.put("batteryCapacity", capacityByCar.get(r.getCarId()));
                 if (r.getRequestTime() != null) {
-                    // 排队时长与提交时刻均换算到仿真时间轴（未启用仿真时钟时即真实值）
-                    LocalDateTime vReq = com.charging.station.util.SimClock.toVirtual(r.getRequestTime());
+                    // requestTime 已是仿真时间轴上的提交时刻；排队时长 = 当前虚拟时刻 - 提交虚拟时刻
+                    LocalDateTime vReq = r.getRequestTime();
                     row.put("requestTime", vReq.format(HM));
                     long waitSec = java.time.Duration.between(vReq,
                             com.charging.station.util.SimClock.nowVirtual()).getSeconds();
@@ -173,6 +179,17 @@ public class StatusBroadcaster {
             status.put("simTime", com.charging.station.util.SimClock.nowVirtual().format(HM));
             status.put("simClockEnabled", com.charging.station.util.SimClock.isEnabled());
             status.put("revenueTotal", Math.round(maintenanceMapper.sumRevenue() * 100) / 100.0);
+
+            // 2.8b 批量调度触发门槛：到站车辆数 / 全部车位数(充电区+等候区)
+            Map<String, Object> batchGate = new HashMap<>();
+            int arrived = dispatchService.countArrivedCars();
+            int capacity = dispatchService.totalStationCapacity();
+            batchGate.put("arrived", arrived);
+            batchGate.put("capacity", capacity);
+            batchGate.put("ready", arrived >= capacity);
+            status.put("batchGate", batchGate);
+            status.put("autoDispatch", com.charging.station.service.ChargingScheduler.isAutoDispatch());
+            status.put("stationConfig", monitoringService.getStationConfig());
 
             // 实时电价时段
             if (policy != null) {

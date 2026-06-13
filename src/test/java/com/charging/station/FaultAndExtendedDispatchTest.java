@@ -135,20 +135,38 @@ public class FaultAndExtendedDispatchTest {
     }
 
     @Test
-    @DisplayName("2.8 全站批量调度：所有等候车按各自模式被分配入桩")
-    void fullStationBatchAssignsAllWaiting() {
+    @DisplayName("2.8b 全站批量调度：未达全部车位数时拒绝触发（充电区+等候区车位门槛）")
+    void fullStationBatchGateBlocksUntilFull() {
         submit("FB1", 60, "FAST");
         submit("FB2", 30, "FAST");
         submit("FB3", 20, "TRICKLE");
         submit("FB4", 10, "TRICKLE");
-        DispatchPlan plan = dispatch.dispatchFullStationBatchMinTotalDuration();
+        // 车位数 = 5 桩×(1正充+2排队) + 等候区(10+10) = 15 + 20 = 35；当前到站 4 辆
+        assertEquals(4, dispatch.countArrivedCars(), "到站车辆数");
+        assertEquals(35, dispatch.totalStationCapacity(), "全部车位数=充电区+等候区");
+        assertThrows(IllegalStateException.class,
+                () -> dispatch.dispatchFullStationBatchMinTotalDuration(false),
+                "未达全部车位数应拒绝批量调度");
+    }
+
+    @Test
+    @DisplayName("2.8b 全站批量调度：不区分模式、任意车任意桩、总完成时长最短（force 跳过门槛）")
+    void fullStationBatchAnyPileMinTotal() {
+        submit("FB1", 60, "FAST");
+        submit("FB2", 30, "FAST");
+        submit("FB3", 20, "TRICKLE");
+        submit("FB4", 10, "TRICKLE");
+        DispatchPlan plan = dispatch.dispatchFullStationBatchMinTotalDuration(true);
 
         assertEquals(4, plan.getAssignments().size(), "全部 4 辆应被分配");
-        assertEquals(CarState.QUEUED_AT_PILE, state("FB1"));
-        assertEquals(CarState.QUEUED_AT_PILE, state("FB3"));
-        // 快充车进快充桩、慢充车进慢充桩
-        assertTrue(pile("FB1").startsWith("P_F"), "快充车应在快充桩");
-        assertTrue(pile("FB3").startsWith("P_T"), "慢充车应在慢充桩");
+        for (String c : new String[]{"FB1", "FB2", "FB3", "FB4"}) {
+            assertEquals(CarState.QUEUED_AT_PILE, state(c), c + " 应已入桩");
+        }
+        // 任意车任意桩：原慢充请求(FB3/FB4)被分到更快的快充桩以最小化总时长
+        assertTrue(pile("FB3").startsWith("P_F"), "8b 不区分模式：慢充请求可进快充桩");
+        assertTrue(pile("FB4").startsWith("P_F"), "8b 不区分模式：慢充请求可进快充桩");
+        // SPT(10,20,30,60) 任意桩贪心全部入快充桩：0.333+0.667+1.333+2.667 = 5.0h
+        assertEquals(5.0, plan.getTotalDuration(), 0.02, "总完成时长应为任意桩 SPT 贪心解");
         assertEquals(0, queueMapper.getWaitingQueue(RequestMode.FAST).getQueueLength());
         assertEquals(0, queueMapper.getWaitingQueue(RequestMode.TRICKLE).getQueueLength());
     }

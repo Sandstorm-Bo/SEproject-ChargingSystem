@@ -27,8 +27,12 @@ public class SimulationConfig {
     @PostConstruct
     public void init() {
         ChargingSession.TIME_ACCELERATION = timeAcceleration;
+        // 仿真时钟始终启用（系统唯一权威时间源）：配置了起始时刻则锚定到该时刻，
+        // 否则默认从当前真实时刻起跑（之后按倍速流逝）。控制台可随时改起始时间与倍速。
         if (simStartTime != null && !simStartTime.isBlank()) {
             SimClock.configure(LocalTime.parse(simStartTime.trim()));
+        } else {
+            SimClock.restart();
         }
     }
 }

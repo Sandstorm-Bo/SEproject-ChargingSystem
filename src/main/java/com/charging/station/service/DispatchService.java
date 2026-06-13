@@ -5,6 +5,7 @@ import com.charging.station.enums.CarState;
 import com.charging.station.enums.PileStatus;
 import com.charging.station.enums.RequestMode;
 import com.charging.station.mapper.*;
+import com.charging.station.util.QueueNumberGenerator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +42,9 @@ public class DispatchService {
 
     @Autowired
     private DispatchRecordMapper dispatchRecordMapper;
+
+    @Autowired
+    private SchedulerTrigger schedulerTrigger;
 
     /**
      * 空位出现时执行调度
@@ -128,7 +132,7 @@ public class DispatchService {
                 ChargingSession session = sessionMapper.getActiveSessionByPileId(queue.getPileId());
                 double remaining = req.getRequestAmount();
                 if (session != null) {
-                    double charged = session.calculateCurrentAmount(ratedPower, java.time.LocalDateTime.now());
+                    double charged = session.calculateCurrentAmount(ratedPower, com.charging.station.util.SimClock.nowVirtual());
                     remaining = Math.max(0.0, session.getRequestAmount() - charged);
                 }
                 totalWaitingTime += remaining / ratedPower;
@@ -186,6 +190,7 @@ public class DispatchService {
         recordDispatchRaw("FAULT_PRIORITY", "pile=" + pileId + ", requeued=" + affectedRequests.size(), affectedRequests.size());
         dispatchWhenEmptySlot();
 
+        schedulerTrigger.afterCommitReconcile();
         return "故障调度完成";
     }
 
@@ -244,6 +249,7 @@ public class DispatchService {
         recordDispatchRaw("FAULT_TIME_ORDER", "pile=" + pileId + ", requeued=" + affectedRequests.size(), affectedRequests.size());
         dispatchWhenEmptySlot();
 
+        schedulerTrigger.afterCommitReconcile();
         return "时间顺序调度完成";
     }
 
@@ -257,7 +263,7 @@ public class DispatchService {
         ChargingPile pile = pileMapper.getPile(pileId);
         pile.recover();
         pileMapper.updatePileState(pile);
-        faultMapper.markRecovered(pileId, java.time.LocalDateTime.now());
+        faultMapper.markRecovered(pileId, com.charging.station.util.SimClock.nowVirtual());
 
         // 2. 规范要求：故障恢复时若其他同类型桩队列中尚有排队车辆，需要统一重新调度。
         //    收集同类型所有桩排队区中尚未开始充电的车辆（正在充电的车不动），
@@ -283,6 +289,7 @@ public class DispatchService {
                 affectedRequests.size());
         dispatchWhenEmptySlot();
 
+        schedulerTrigger.afterCommitReconcile();
         return "充电桩恢复并重新调度完成";
     }
 
@@ -329,6 +336,7 @@ public class DispatchService {
             queueMapper.updateWaitingQueue(waitingQueue);
         }
         recordDispatchRaw("MANUAL_ASSIGN", "car=" + request.getCarId() + " -> pile=" + pileId, 1);
+        schedulerTrigger.afterCommitReconcile();
         return request.getCarId() + " 已指派到 " + pile.getPileNo() + "（队位 " + request.getQueuePosition() + "）";
     }
 
@@ -371,6 +379,7 @@ public class DispatchService {
         recordDispatchRaw("PILE_CLOSE", "pile=" + pileId + ", requeued=" + affectedRequests.size(),
                 affectedRequests.size());
         dispatchWhenEmptySlot();
+        schedulerTrigger.afterCommitReconcile();
         return pile;
     }
 
@@ -428,9 +437,9 @@ public class DispatchService {
                                                             boolean requeueRemaining) {
         // 计算当前充电量和费用（启用跨时段分段计费）
         TariffPolicy policy = queueMapper.getCurrentTariffPolicy();
-        Double currentAmount = session.calculateCurrentAmount(pile.getRatedPower(), java.time.LocalDateTime.now());
+        Double currentAmount = session.calculateCurrentAmount(pile.getRatedPower(), com.charging.station.util.SimClock.nowVirtual());
         Double currentDuration = currentAmount / pile.getRatedPower() * 60.0;
-        Double chargeFee = policy.calculateChargeFee(currentAmount, com.charging.station.util.SimClock.toVirtual(session.getStartTime()).toLocalTime(), pile.getRatedPower());
+        Double chargeFee = policy.calculateChargeFee(currentAmount, session.getStartTime().toLocalTime(), pile.getRatedPower());
         Double serviceFee = policy.calculateServiceFee(currentAmount);
 
         // 中断会话
@@ -491,7 +500,7 @@ public class DispatchService {
         fr.setPileId(pileId);
         fr.setStrategy(strategy);
         fr.setFaultReason(reason);
-        fr.setOccurredAt(java.time.LocalDateTime.now());
+        fr.setOccurredAt(com.charging.station.util.SimClock.nowVirtual());
         fr.setStatus("OPEN");
         faultMapper.insertFaultRecord(fr);
     }
@@ -526,22 +535,139 @@ public class DispatchService {
     }
 
     /**
-     * 批量调度（dispatchFullStationBatchMinTotalDuration）：对全站所有等候车辆，
-     * 按模式分别在对应桩上生成最短总完成时长方案，返回整站方案。
+     * 批量调度（dispatchFullStationBatchMinTotalDuration）：规范 2.8 b。
+     * <p>规则：(1) <b>不区分快/慢模式，任意车可分配任意类型充电桩</b>；(2) 最小化一批车辆的总完成时长
+     * （所有车累计等待 + 累计充电时间）；(3) 仅当“到站车辆数 == 全部车位数(充电区 + 等候区)”时才触发。
+     * <p>{@code force=true} 跳过车位门槛（演示用，非验收口径）。
      */
     @Transactional
-    public DispatchPlan dispatchFullStationBatchMinTotalDuration() {
-        DispatchPlan combined = new DispatchPlan();
-        combined.setMode("MIXED");
-        double total = 0.0;
-        for (RequestMode mode : RequestMode.values()) {
-            DispatchPlan p = batchAssignMinTotalDuration(mode, Integer.MAX_VALUE);
-            combined.getAssignments().addAll(p.getAssignments());
-            total += p.getTotalDuration();
+    public DispatchPlan dispatchFullStationBatchMinTotalDuration(boolean force) {
+        int arrived = countArrivedCars();
+        int capacity = totalStationCapacity();
+        if (!force && arrived < capacity) {
+            throw new IllegalStateException("批量调度需到站车辆达到全部车位数 " + capacity
+                    + "（充电区+等候区），当前仅 " + arrived + " 辆");
         }
-        combined.setTotalDuration(total);
-        recordDispatch("FULL_STATION_BATCH", combined);
-        return combined;
+
+        // 所有等候区车辆（不区分模式），合为一组
+        List<ChargingRequest> waiting = new ArrayList<>();
+        for (RequestMode m : RequestMode.values()) {
+            waiting.addAll(requestMapper.getWaitingRequests(m.toString()));
+        }
+        DispatchPlan plan = batchAssignAnyPileMinTotalDuration(waiting);
+        recordDispatch("FULL_STATION_BATCH", plan);
+        return plan;
+    }
+
+    /** 在站车辆数：等候区 + 桩前排队 + 充电中（用于批量调度的触发门槛判定） */
+    public int countArrivedCars() {
+        int n = 0;
+        for (RequestMode m : RequestMode.values()) {
+            n += requestMapper.getWaitingRequests(m.toString()).size();
+        }
+        for (ChargingPile p : pileMapper.getAllChargingPiles()) {
+            for (ChargingRequest r : requestMapper.getRequestsByPileId(p.getPileId())) {
+                CarState st = r.getRequestStatus();
+                if (st == CarState.QUEUED_AT_PILE || st == CarState.CALLED || st == CarState.CHARGING) {
+                    n++;
+                }
+            }
+        }
+        return n;
+    }
+
+    /** 全部车位数 = 充电区(每桩 1 正充 + M 排队) + 等候区(各模式容量之和) */
+    public int totalStationCapacity() {
+        int cap = 0;
+        for (ChargingPile p : pileMapper.getAllChargingPiles()) {
+            ChargingQueue q = queueMapper.getChargingQueueByPileId(p.getPileId());
+            cap += 1 + (q != null ? q.getQueueLenM() : 0);
+        }
+        for (RequestMode m : RequestMode.values()) {
+            WaitingQueue wq = queueMapper.getWaitingQueue(m);
+            cap += (wq != null && wq.getMaxCapacity() != null ? wq.getMaxCapacity() : 0);
+        }
+        return cap;
+    }
+
+    /**
+     * 把一组车（不区分模式）按“最短总完成时长”分配到<b>任意类型</b>可用桩。
+     * 桩功率因类型而异（快 30 / 慢 10），属异速并行机：按 SPT(电量升序) 取车，
+     * 每辆分配到使其完成时刻(桩当前负载 + 自身充电时长)最小的桩——使一批车的总完成时长最短。
+     * 车辆被分到与原模式不同类型的桩时，按桩类型改写其模式（8b 客户请求只指定电量，按桩计费）。
+     */
+    private DispatchPlan batchAssignAnyPileMinTotalDuration(List<ChargingRequest> waiting) {
+        DispatchPlan plan = new DispatchPlan();
+        plan.setMode("MIXED");
+        if (waiting == null || waiting.isEmpty()) {
+            return plan;
+        }
+
+        List<PileSlot> slots = new ArrayList<>();
+        for (ChargingPile pile : pileMapper.getAllChargingPiles()) {
+            if (!pile.canAcceptNewVehicle()) {
+                continue;
+            }
+            ChargingQueue q = queueMapper.getChargingQueueByPileId(pile.getPileId());
+            int room = q.getQueueLenM() - q.getCurrentLength();
+            if (room <= 0) {
+                continue;
+            }
+            slots.add(new PileSlot(pile, room, calculateQueueWaitingTime(q, pile.getRatedPower())));
+        }
+        if (slots.isEmpty()) {
+            return plan;
+        }
+
+        waiting.sort(Comparator.comparingDouble(ChargingRequest::getRequestAmount)); // SPT
+        double total = 0.0;
+        for (ChargingRequest car : waiting) {
+            PileSlot best = null;
+            double bestCompletion = Double.MAX_VALUE;
+            for (PileSlot s : slots) {
+                if (s.room <= 0) {
+                    continue;
+                }
+                double completion = s.load + car.getRequestAmount() / s.pile.getRatedPower();
+                if (completion < bestCompletion) {
+                    bestCompletion = completion;
+                    best = s;
+                }
+            }
+            if (best == null) {
+                break; // 无空位可分配
+            }
+            double dur = car.getRequestAmount() / best.pile.getRatedPower();
+
+            // 从原模式等候区计数减一
+            RequestMode oldMode = car.getRequestMode();
+            WaitingQueue oldWq = queueMapper.getWaitingQueue(oldMode);
+            if (oldWq != null) {
+                oldWq.setQueueLength(Math.max(0, oldWq.getQueueLength() - 1));
+                queueMapper.updateWaitingQueue(oldWq);
+            }
+            // 车辆模式与目标桩类型不同：按桩类型改写模式（任意车任意桩）
+            RequestMode pileMode = RequestMode.fromString(best.pile.getPileType());
+            if (oldMode != pileMode) {
+                car.modifyMode(pileMode, QueueNumberGenerator.generate(pileMode));
+                requestMapper.updateRequestMode(car);
+            }
+
+            ChargingQueue q = queueMapper.getChargingQueueByPileId(best.pile.getPileId());
+            q.enqueue(car);
+            queueMapper.updateChargingQueue(q);
+            car.assignToPile(best.pile.getPileId(), q.getCurrentLength());
+            requestMapper.updateRequestStatus(car);
+            requestMapper.updateVehicleState(car.getCarId(), CarState.QUEUED_AT_PILE.name());
+
+            best.load = bestCompletion;
+            best.room -= 1;
+            total += bestCompletion;
+            plan.addAssignment(car.getCarId(), car.getQueueNum(), best.pile.getPileId(),
+                    q.getCurrentLength(), dur, bestCompletion);
+        }
+        plan.setTotalDuration(total);
+        return plan;
     }
 
     /**

@@ -122,20 +122,27 @@ public class ChargingSession {
     }
 
     /**
-     * 演示用时间加速因子：1 真实秒 = TIME_ACCELERATION 模拟秒。
-     * 取 120 时，一辆快充充满 30 度（30kW 需 1 模拟小时）约 30 真实秒完成。
+     * 时间加速因子：1 真实秒 = TIME_ACCELERATION 仿真秒。
+     * 仅由 {@link com.charging.station.util.SimClock} 用于推进虚拟时钟；取 120 时，
+     * 一辆快充充满 30 度（30kW 需 1 仿真小时）约 30 真实秒完成。
+     * <p>注意：充电量/时长由“虚拟时间差”直接推导，本字段不再在此处二次相乘，
+     * 否则会与已是加速时间轴的虚拟时刻叠加导致双重加速。
      */
     public static double TIME_ACCELERATION = 120.0;
 
-    /** 自开始充电以来经过的“模拟小时数” */
+    /**
+     * 自开始充电以来经过的“仿真小时数”。
+     * startTime 与 currentTime 都已是 {@link com.charging.station.util.SimClock} 的虚拟时刻，
+     * 其差值本身即为仿真时长，直接换算成小时即可（不再乘加速因子）。
+     */
     private double simulatedHours(LocalDateTime currentTime) {
         if (startTime == null || currentTime == null) {
             return 0.0;
         }
-        double realSeconds = java.time.Duration.between(startTime, currentTime).toMillis() / 1000.0;
-        // MySQL TIMESTAMP 把毫秒四舍五入到秒，回读的 startTime 可能比当前时刻晚最多 0.5s，
-        // 经过时间必须钳为非负，否则充电量为负、故障中断时“剩余电量”会大于原请求量
-        return Math.max(0.0, realSeconds) * TIME_ACCELERATION / 3600.0;
+        double virtualSeconds = java.time.Duration.between(startTime, currentTime).toMillis() / 1000.0;
+        // MySQL DATETIME 回读可能有最多 0.5s 误差，经过时间必须钳为非负，
+        // 否则充电量为负、故障中断时“剩余电量”会大于原请求量
+        return Math.max(0.0, virtualSeconds) / 3600.0;
     }
 
     /**
@@ -160,7 +167,10 @@ public class ChargingSession {
      * 结束会话
      */
     public void finish(Double finalAmount, Double finalDuration, Double chargeFee, Double serviceFee) {
-        this.endTime = LocalDateTime.now();
+        // 结束时刻由「开始时刻 + 充电时长」推导，确保详单的起止时刻之差严格等于充电时长。
+        // 不直接取当前虚拟时刻：秒级调度器最多滞后一个 tick 才发现“已充满”，会让结束时刻比真正充满
+        // 晚最多一个仿真 tick，造成“时长对、时刻差几分钟”的不自洽。
+        this.endTime = endTimeFromDuration(finalDuration);
         this.chargeAmount = finalAmount;
         this.chargeDuration = finalDuration;
         this.chargeFee = chargeFee;
@@ -173,12 +183,21 @@ public class ChargingSession {
      * 中断会话（故障）
      */
     public void interrupt(Double currentAmount, Double currentDuration, Double chargeFee, Double serviceFee) {
-        this.endTime = LocalDateTime.now();
+        // 同 finish：结束时刻 = 开始时刻 + 已充时长，保证详单起止时刻与时长自洽
+        this.endTime = endTimeFromDuration(currentDuration);
         this.chargeAmount = currentAmount;
         this.chargeDuration = currentDuration;
         this.chargeFee = chargeFee;
         this.serviceFee = serviceFee;
         this.totalFee = chargeFee + serviceFee;
         this.sessionStatus = "中断";
+    }
+
+    /** 开始时刻 + 时长(分钟) → 结束时刻（虚拟时间轴）；缺开始时刻时退化为当前虚拟时刻 */
+    private LocalDateTime endTimeFromDuration(Double durationMinutes) {
+        if (startTime == null || durationMinutes == null) {
+            return com.charging.station.util.SimClock.nowVirtual();
+        }
+        return startTime.plus(java.time.Duration.ofMillis(Math.round(durationMinutes * 60000.0)));
     }
 }

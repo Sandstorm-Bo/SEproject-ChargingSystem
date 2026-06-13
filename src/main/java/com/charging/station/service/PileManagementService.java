@@ -21,6 +21,9 @@ public class PileManagementService {
     @Autowired
     private QueueMapper queueMapper;
 
+    @Autowired
+    private SchedulerTrigger schedulerTrigger;
+
     /**
      * 启动充电桩
      * 对应系统事件: powerOn(pileId)
@@ -35,6 +38,8 @@ public class PileManagementService {
         pile.powerOn();
         pileMapper.updatePileState(pile);
 
+        // 桩重新可用 → 对账：等候区车辆可立即分配过来并开充
+        schedulerTrigger.afterCommitReconcile();
         return pile;
     }
 
@@ -52,7 +57,7 @@ public class PileManagementService {
         }
 
         policy.setStatus("已配置");
-        policy.setUpdateTime(java.time.LocalDateTime.now());
+        policy.setUpdateTime(com.charging.station.util.SimClock.nowVirtual());
 
         queueMapper.saveTariffPolicy(policy);
 
@@ -79,6 +84,8 @@ public class PileManagementService {
         pile.run();
         pileMapper.updatePileState(pile);
 
+        // 桩进入运行态 → 对账：等候区车辆可分配过来并立即开充
+        schedulerTrigger.afterCommitReconcile();
         return pile;
     }
 
@@ -112,6 +119,8 @@ public class PileManagementService {
         pile.setParameters(powerKw);
         pileMapper.updatePileState(pile);
 
+        // 功率变化 → 在充会话的“充满真实时刻”随之改变，重排所有在充定时器
+        schedulerTrigger.onRateChange();
         return pile;
     }
 }

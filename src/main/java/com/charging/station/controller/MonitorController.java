@@ -28,6 +28,9 @@ public class MonitorController {
     @Autowired
     private StationLock stationLock;
 
+    @Autowired
+    private com.charging.station.service.SchedulerTrigger schedulerTrigger;
+
     /**
      * 查看单个充电桩状态
      * GET /api/monitor/pile/{pileId}
@@ -85,6 +88,38 @@ public class MonitorController {
     }
 
     /**
+     * 查询当前验收参数（快/慢桩数、等候区容量、桩排队队列长度 M）
+     * GET /api/monitor/station-config
+     */
+    @GetMapping("/station-config")
+    public Result<java.util.Map<String, Object>> getStationConfig() {
+        try {
+            return Result.success(monitoringService.getStationConfig());
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 重配验收参数（重建充电桩拓扑、清空充电业务数据）。验收时可自由设置。
+     * POST /api/monitor/station-config?fastNum=2&trickleNum=3&waitingSize=10&queueLen=2
+     */
+    @PostMapping("/station-config")
+    public Result<java.util.Map<String, Object>> setStationConfig(@RequestParam int fastNum,
+                                                                  @RequestParam int trickleNum,
+                                                                  @RequestParam int waitingSize,
+                                                                  @RequestParam int queueLen) {
+        try {
+            stationLock.run(() -> monitoringService.reconfigureStation(fastNum, trickleNum, waitingSize, queueLen));
+            return Result.success("参数已生效：快充" + fastNum + " 慢充" + trickleNum
+                    + " 等候区" + waitingSize + " 队列M" + queueLen + "（充电数据已清空）",
+                    monitoringService.getStationConfig());
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    /**
      * 查询仿真时钟当前虚拟时刻（未启用时即真实时间）
      * GET /api/monitor/sim-clock
      */
@@ -127,7 +162,11 @@ public class MonitorController {
             if (value < 1 || value > 600) {
                 return Result.error("仿真倍速需在 1 ~ 600 之间");
             }
+            // 先把当前虚拟时刻设为新锚点再改倍速，保证仿真时钟连续不跳变、已存记录不受影响
+            com.charging.station.util.SimClock.prepareSpeedChange();
             ChargingSession.TIME_ACCELERATION = value;
+            // 倍速改变 → 在充会话“多久后充满”随之改变，重排所有一次性充满定时器（零轮询关键一环）
+            schedulerTrigger.onRateChange();
             return Result.success("仿真倍速已更新", value);
         } catch (Exception e) {
             return Result.error(e.getMessage());

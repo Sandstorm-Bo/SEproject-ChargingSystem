@@ -159,7 +159,7 @@ public class ChargingPile {
         }
         this.status = PileStatus.IDLE;
         this.isSchedulable = true;
-        this.lastRunTime = LocalDateTime.now();
+        this.lastRunTime = com.charging.station.util.SimClock.nowVirtual();
     }
 
     /**
@@ -168,7 +168,7 @@ public class ChargingPile {
     public void powerOff() {
         this.status = PileStatus.OFFLINE;
         this.isSchedulable = false;
-        this.lastStopTime = LocalDateTime.now();
+        this.lastStopTime = com.charging.station.util.SimClock.nowVirtual();
     }
 
     /**

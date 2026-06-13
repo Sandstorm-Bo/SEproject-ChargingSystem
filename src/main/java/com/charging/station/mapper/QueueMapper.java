@@ -53,4 +53,9 @@ public interface QueueMapper {
      * 保存计费策略
      */
     void saveTariffPolicy(TariffPolicy policy);
+
+    /**
+     * 插入充电桩前队列（重配充电桩拓扑用）
+     */
+    void insertChargingQueue(ChargingQueue queue);
 }

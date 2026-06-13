@@ -305,6 +305,13 @@ public class DispatchLifecycleLogicTest {
             assertEquals(d.getChargeFee() + d.getServiceFee(), d.getSubtotalFee(), 0.01, "总费=充电费+服务费");
             assertEquals(d.getChargeAmount() * 0.8, d.getServiceFee(), 0.01, "服务费=0.8×电量");
             assertEquals(d.getChargeAmount() / 30.0 * 60.0, d.getChargeDuration(), 0.1, "时长=电量/功率×60");
+            // 时刻与时长自洽（修复“时长对、时刻错”）：起止时刻取自仿真时间轴，
+            // 其差值（分钟）应与详单展示的充电时长一致，而非真实墙钟下的数秒之差。
+            assertNotNull(d.getStartTime());
+            assertNotNull(d.getEndTime());
+            double spanMinutes = java.time.Duration.between(d.getStartTime(), d.getEndTime()).toMillis() / 60000.0;
+            assertEquals(d.getChargeDuration(), spanMinutes, 0.5,
+                    "详单起止时刻之差应等于充电时长（同一仿真时间轴，自洽）");
 
             List<Map<String, Object>> report = maintenanceMapper.selectReport("%Y-%m-%d");
             assertFalse(report.isEmpty(), "日报表应至少有一行");

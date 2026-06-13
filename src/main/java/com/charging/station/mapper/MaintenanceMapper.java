@@ -67,4 +67,16 @@ public interface MaintenanceMapper {
 
     @Update("UPDATE vehicle SET car_state = 'IDLE', current_battery_level = 0")
     void resetVehicles();
+
+    // ---- 验收参数重配：重建充电桩拓扑（按外键依赖顺序，业务数据须先清空） ----
+
+    @Delete("DELETE FROM charging_queue")
+    void deleteAllChargingQueues();
+
+    @Delete("DELETE FROM charging_pile")
+    void deleteAllPiles();
+
+    /** 设置全部等候区（快/慢）的最大容量并清零当前长度（WaitingAreaSize 可调） */
+    @Update("UPDATE waiting_queue SET max_capacity = #{cap}, queue_length = 0")
+    void setWaitingAreaCapacity(@Param("cap") int cap);
 }

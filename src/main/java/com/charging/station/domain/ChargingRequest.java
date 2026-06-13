@@ -139,7 +139,7 @@ public class ChargingRequest {
         this.queueNum = newQueueNum;
         // 规范：修改模式 = 重新生成排队号并排到新模式队列的最后一位。
         // 调度按 requestTime 升序取车，必须刷新提交时间，否则改模式的车会按原时间插队
-        this.requestTime = LocalDateTime.now();
+        this.requestTime = com.charging.station.util.SimClock.nowVirtual();
     }
 
     /**

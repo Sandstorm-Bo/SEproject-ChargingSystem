@@ -140,14 +140,45 @@ public class DispatchController {
     }
 
     /**
-     * 2.8 扩展调度：全站最短总完成时长批量调度
-     * POST /api/dispatch/batch/full
+     * 切换“自动叫号调度”运行期开关：关闭后车辆停留等候区，便于用批量/指定/故障等调度方式手动接管。
+     * POST /api/dispatch/auto?enabled=false
+     */
+    @PostMapping("/auto")
+    public Result<Boolean> setAutoDispatch(@RequestParam boolean enabled) {
+        com.charging.station.service.ChargingScheduler.setAutoDispatch(enabled);
+        return Result.success(enabled ? "自动叫号调度已开启"
+                : "自动叫号调度已暂停：车辆停留等候区，可用批量/指定/故障调度方式手动调度", enabled);
+    }
+
+    /**
+     * 2.8 扩展调度：全站最短总完成时长批量调度（不区分模式、任意车任意桩）。
+     * 仅当到站车辆达到全部车位数时触发；force=true 跳过门槛（演示用）。
+     * POST /api/dispatch/batch/full[?force=true]
      */
     @PostMapping("/batch/full")
-    public Result<DispatchPlan> batchFull() {
+    public Result<DispatchPlan> batchFull(@RequestParam(defaultValue = "false") boolean force) {
         try {
-            DispatchPlan plan = stationLock.call(() -> dispatchService.dispatchFullStationBatchMinTotalDuration());
+            DispatchPlan plan = stationLock.call(() -> dispatchService.dispatchFullStationBatchMinTotalDuration(force));
             return Result.success("全站最短总时长调度完成", plan);
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 批量调度触发门槛状态：到站车辆数 / 全部车位数。
+     * GET /api/dispatch/batch/full/status
+     */
+    @GetMapping("/batch/full/status")
+    public Result<java.util.Map<String, Object>> batchFullStatus() {
+        try {
+            java.util.Map<String, Object> m = new java.util.HashMap<>();
+            int arrived = dispatchService.countArrivedCars();
+            int capacity = dispatchService.totalStationCapacity();
+            m.put("arrived", arrived);
+            m.put("capacity", capacity);
+            m.put("ready", arrived >= capacity);
+            return Result.success(m);
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }
