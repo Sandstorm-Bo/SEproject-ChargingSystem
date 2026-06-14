@@ -97,8 +97,21 @@
     }
   }
   function initServerBar() {
-    const input = document.getElementById('srvInput');
-    if (input) input.value = serverBase();
+    // 远程部署：支持用 ?api=host:port（或 ?server=）一键指定后端，免去每台机器手改地址；
+    // 解析后立即写入 serverBase 并从地址栏抹掉参数，方便分发带参链接（http/https 可靠；file:// 下退化忽略）
+    try {
+      const u = new URLSearchParams(location.search);
+      const fromUrl = u.get('api') || u.get('server');
+      if (fromUrl) {
+        setServer(fromUrl);
+        u.delete('api'); u.delete('server');
+        const qs = u.toString();
+        history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+      }
+    } catch (e) { /* 老浏览器 / file:// 下忽略，serverBase 已写入 */ }
+    const legacy = document.getElementById('srvInput');
+    if (legacy) legacy.value = serverBase();
+    document.querySelectorAll('.srv-input').forEach((el) => { el.value = serverBase(); });
     const pill = document.querySelector('.srv-pill');
     const panel = document.getElementById('srvPanel');
     if (pill && panel) pill.addEventListener('click', () => panel.classList.toggle('show'));
@@ -107,7 +120,10 @@
   }
   function applyServer() {
     const input = document.getElementById('srvInput');
-    setServer(input ? input.value : '');
+    connectTo(input ? input.value : '');
+  }
+  function connectTo(v) {
+    setServer(v);
     location.reload();
   }
   function setConnState(ok) {
@@ -117,6 +133,12 @@
     if (txt) txt.textContent = ok ? '已连接' : ok === false ? '连接失败' : '未连接';
     const lb = document.getElementById('liveBadge');
     if (lb) lb.style.opacity = ok ? '1' : '.4';
+    // 登录浮层内的连接状态：让用户在登录前就看清服务器通没通（红=先改地址、绿=可登录）
+    document.querySelectorAll('.srv-state').forEach((el) => {
+      el.textContent = ok ? '✓ 已连接' : ok === false ? '✗ 连接失败，请检查服务器地址' : '检测中…';
+      el.classList.toggle('ok', !!ok);
+      el.classList.toggle('bad', ok === false);
+    });
     // 连不上时自动弹开地址栏，提示检查/重填服务器 IP
     if (ok === false) nudgeServerBar();
   }
@@ -198,6 +220,12 @@
       <div class="field"><div class="field-label">密码 <span class="hint">至少 4 位</span></div>
         <input type="password" class="input mono" id="admPass" maxlength="50" placeholder="••••••"></div>
       <div class="modal-foot"><button class="btn btn-primary btn-block" id="admGo">登 录</button></div>
+      <div class="auth-srv">
+        <span class="mute">🌐 服务器</span>
+        <input type="text" class="input mono srv-input" id="admSrv" placeholder="192.168.1.10:8080">
+        <button class="btn btn-ghost btn-sm" id="admSrvGo">连接</button>
+        <span class="srv-state hint">检测中…</span>
+      </div>
     </div>`;
     document.body.appendChild(mask);
 
@@ -235,6 +263,8 @@
         apply();
       } catch (e) { toast('请求失败，请检查服务器连接', 'error'); }
     }
+    q('#admSrv').value = serverBase();
+    q('#admSrvGo').addEventListener('click', () => connectTo(q('#admSrv').value));
     q('#admGo').addEventListener('click', go);
     q('#admPass').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
     apply();
@@ -243,7 +273,7 @@
 
   window.ION = {
     serverBase, setServer, api, fmt, toast, startClock,
-    initServerBar, applyServer, setConnState, connectStatus,
+    initServerBar, applyServer, connectTo, setConnState, connectStatus,
     post, put, postJson, getJson, adminGate
   };
 })();

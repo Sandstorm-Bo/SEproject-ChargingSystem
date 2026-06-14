@@ -164,6 +164,12 @@
       <div class="modal-foot">
         <button class="btn btn-primary btn-block" id="authSubmit" onclick="doAuth()">登 录</button>
       </div>
+      <div class="auth-srv">
+        <span class="mute">🌐 服务器</span>
+        <input type="text" class="input mono srv-input" id="authSrv" placeholder="192.168.1.10:8080">
+        <button class="btn btn-ghost btn-sm" onclick="ION.connectTo(document.getElementById('authSrv').value)">连接</button>
+        <span class="srv-state hint">检测中…</span>
+      </div>
     </div>
   </div>
 

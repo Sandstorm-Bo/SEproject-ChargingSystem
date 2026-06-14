@@ -168,7 +168,8 @@ body::after{
 .clock{ font-family:var(--mono); font-size:13px; color:var(--text-dim); letter-spacing:.5px; }
 
 /* 服务器配置 pill */
-.srv{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+/* z-index 高于登录/账单浮层(.mask=1500)：未配置或连不上时，即便登录浮层盖住全页也能点开改服务器地址 */
+.srv{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; position:relative; z-index:1600; }
 .srv-pill{
   display:inline-flex; align-items:center; gap:8px; cursor:pointer;
   padding:8px 13px; border-radius:999px; border:1px solid var(--line-2);
@@ -184,6 +185,14 @@ body::after{
   background:var(--panel-2); backdrop-filter:blur(8px);
 }
 .srv-panel.show{ display:flex; }
+
+/* 登录浮层内的服务器地址行：远程部署时进门即可改后端，并实时显示连通状态 */
+.auth-srv{ margin-top:14px; padding-top:14px; border-top:1px solid var(--line); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.auth-srv .mute{ font-size:12px; white-space:nowrap; }
+.auth-srv .srv-input{ flex:1; min-width:150px; padding:7px 11px; font-size:12px; }
+.srv-state{ width:100%; font-size:11px; color:var(--text-mute); }
+.srv-state.ok{ color:var(--live); }
+.srv-state.bad{ color:var(--rose); }
 
 /* ============================ 卡片 / 区块 ============================ */
 .card{
