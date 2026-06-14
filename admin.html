@@ -28,6 +28,11 @@
     .lane .flow-tag{ position:absolute; right:16px; top:13px; font-family:var(--mono); font-size:10px; color:var(--energy); letter-spacing:1px; opacity:.8; }
     .lane-cars{ display:flex; gap:14px; overflow-x:auto; padding:10px 2px 2px; min-height:72px; align-items:flex-end; }
     .lane-empty{ color:var(--text-mute); font-size:12.5px; display:flex; align-items:center; min-height:64px; gap:8px; }
+    /* §7a/§7b 故障队列未清空 → 暂停等候区叫号：等候区整体标红提示 */
+    .lane.paused{ border-color:rgba(255,101,119,.5); border-style:solid; background:rgba(255,101,119,.05); }
+    .pause-badge{ margin-left:10px; font-size:10.5px; font-weight:600; color:#ffb3bc; letter-spacing:.5px;
+      border:1px solid rgba(255,101,119,.45); border-radius:999px; padding:2px 9px; background:rgba(255,101,119,.1);
+      animation:pulse 1.6s infinite; }
 
     /* zones */
     .zones{ display:grid; grid-template-columns:0.95fr 1.35fr; gap:18px; }
@@ -80,6 +85,9 @@
 
     .bay-stat{ position:absolute; right:12px; top:9px; font-family:var(--mono); font-size:9.5px; color:var(--text-mute); }
     .fault-tag{ display:flex; flex-direction:column; align-items:center; gap:2px; color:#ffb3bc; font-size:11px; text-align:center; max-width:150px; }
+    /* 故障桩排队队列里"等待重排"的车：排队号标红，与正常队位区分 */
+    .bay.s-fault .spot .qn{ color:#ffb3bc; font-weight:600; }
+    .bay.s-fault .spot .slot-tag{ color:rgba(255,179,188,.6); }
 
     /* telemetry */
     .telemetry{ display:flex; flex-wrap:wrap; border:1px solid var(--line); border-radius:16px; overflow:hidden; background:var(--panel); box-shadow:var(--shadow); }
@@ -136,10 +144,11 @@
       </div>
 
       <!-- 等候区 -->
-      <div class="lane">
+      <div class="lane" id="waitLane">
         <div class="zone-tag" style="margin-bottom:0;">
           <i style="background:var(--amber)"></i>等候区 · WAITING AREA
           <b id="laneCount">0 / 10</b>
+          <span class="pause-badge" id="callPause" hidden>⏸ 叫号暂停 · 正在为故障队列调度</span>
           <span class="flow-tag">下行进入充电区 ↓</span>
         </div>
         <div class="lane-cars" id="laneCars"><div class="lane-empty">○ 等候区空闲，无车辆排队</div></div>
@@ -302,15 +311,16 @@
             : ghost(p.status === 'OFFLINE' ? '离线' : '充电位');
         }
 
-        // 桩前排队位
+        // 桩前排队位（故障桩里的车 = §7a/§7b 等待重排，号标红、空位标"故障队列"）
         const queued = waiting.filter(w => w.pileId === p.pileId)
           .sort((a, b2) => (a.queuePosition || 0) - (b2.queuePosition || 0));
+        const isFault = p.status === 'FAULT';
         for (let i = 0; i < M; i++) {
           const w = queued[i];
           if (w) currentIds.add(w.carId);
           b.qslots[i].innerHTML = w
-            ? miniCar(w.mode, w.carId, '队位 ' + (w.queuePosition || (i + 1)), true, !shown.has(w.carId))
-            : ghost('排队位');
+            ? miniCar(w.mode, w.carId, isFault ? '⏳ 待重排' : '队位 ' + (w.queuePosition || (i + 1)), true, !shown.has(w.carId))
+            : ghost(isFault ? '故障队列' : '排队位');
         }
 
         // 累计
@@ -324,6 +334,11 @@
         ? area.map(w => { currentIds.add(w.carId); return `<div class="spot">${miniCar(w.mode, w.carId, w.queueNum, false, !shown.has(w.carId))}</div>`; }).join('')
         : '<div class="lane-empty">○ 等候区空闲，无车辆排队</div>';
       document.getElementById('laneCount').textContent = `${data.waitingAreaCount || 0} / 10`;
+      // §7a/§7b：只要还有车滞留在故障桩排队队列（等待重排），等候区叫号即暂停 → 整体标红 + 徽标提示
+      const callingPaused = data.piles.some(p => p.status === 'FAULT'
+        && waiting.some(w => w.pileId === p.pileId && (w.status === 'QUEUED_AT_PILE' || w.status === 'CALLED')));
+      document.getElementById('waitLane').classList.toggle('paused', callingPaused);
+      document.getElementById('callPause').hidden = !callingPaused;
       // 更新"已在场"集合：下一帧只对新出现的车播放驶入动画
       shown.clear(); currentIds.forEach(id => shown.add(id));
 

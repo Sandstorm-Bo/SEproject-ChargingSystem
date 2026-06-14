@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * 覆盖需求中"无歧义"的核心规则：
  *  - 选桩：同模式、有空位中取"完成时长最短"，平局取桩序 F1<F2<T1<T2<T3
- *  - 容量：等候区 N（按模式各 10）满则拒绝；桩前队列 M=2 满则不再分配
+ *  - 容量：等候区 N（快/慢共用，WAITING 总数 10）满则拒绝；桩前队列 M=2 满则不再分配
  *  - 修改场景：等候区可改量/改模式（改模式重排到队尾），充电区一律拒绝
  *  - 取消：等候区/桩排队可取消；充电中经 cancel 接口被拒（须走结束充电）
  *  - 前车数量、结束充电出账与详单字段、报表聚合
@@ -160,7 +160,7 @@ public class DispatchLifecycleLogicTest {
     // ============ 容量 ============
 
     @Test
-    @DisplayName("等候区容量 N=10（按模式）：第 11 辆快充被拒")
+    @DisplayName("等候区容量 N=10：第 11 辆快充被拒")
     void waitingAreaCapacityRejects11th() {
         for (int i = 1; i <= 10; i++) {
             submit("TST-W-" + i, 30, "FAST");
@@ -169,6 +169,43 @@ public class DispatchLifecycleLogicTest {
         IllegalStateException ex = assertThrows(IllegalStateException.class,
                 () -> submit("TST-W-11", 30, "FAST"));
         assertTrue(ex.getMessage().contains("等候区已满"), "应提示等候区已满");
+    }
+
+    @Test
+    @DisplayName("等候区 N=10 为快/慢共用单一区域：6 快+4 慢占满后，第 11 辆(任意模式)被拒")
+    void waitingAreaSharedCapacityRejects11thMixed() {
+        for (int i = 1; i <= 6; i++) submit("TSTM-F-" + i, 30, "FAST");
+        for (int i = 1; i <= 4; i++) submit("TSTM-T-" + i, 20, "TRICKLE");
+        assertEquals(6, waitingLen(RequestMode.FAST), "快充等候 6");
+        assertEquals(4, waitingLen(RequestMode.TRICKLE), "慢充等候 4");
+        // 快/慢共用等候区已满 10：再来一辆（无论快慢）都应被拒——而非各自再放到 10
+        assertTrue(assertThrows(IllegalStateException.class,
+                () -> submit("TSTM-T-5", 10, "TRICKLE"),
+                "共用等候区满 10 后第 11 辆(慢充)应被拒").getMessage().contains("等候区已满"));
+        assertTrue(assertThrows(IllegalStateException.class,
+                () -> submit("TSTM-F-7", 10, "FAST"),
+                "共用等候区满 10 后第 11 辆(快充)应被拒").getMessage().contains("等候区已满"));
+    }
+
+    @Test
+    @DisplayName("控制台动态重配生效(非硬编码)：改 桩数/等候区N/队列M 后即时按新参数运行")
+    void reconfigureStationAppliesAtRuntime() {
+        // 改成与默认 2/3/N10/M2 完全不同的拓扑：快1·慢1·等候区N=3·队列M=1
+        monitoring.reconfigureStation(1, 1, 3, 1);
+        java.util.Map<String, Object> cfg = monitoring.getStationConfig();
+        assertEquals(1, ((Number) cfg.get("fastNum")).intValue(), "快充桩数应改为 1");
+        assertEquals(1, ((Number) cfg.get("trickleNum")).intValue(), "慢充桩数应改为 1");
+        assertEquals(3, ((Number) cfg.get("waitingSize")).intValue(), "等候区 N 应改为 3");
+        assertEquals(1, ((Number) cfg.get("queueLen")).intValue(), "队列 M 应改为 1");
+        assertEquals(2, pileMapper.getAllChargingPiles().size(), "应只剩 1 快+1 慢 = 2 个桩");
+
+        // 新 N=3 即时生效：装满 3 辆后第 4 辆被拒——证明判满读的是动态配置而非写死的 10
+        for (int i = 1; i <= 3; i++) submit("RC-" + i, 20, "FAST");
+        assertEquals(3, waitingLen(RequestMode.FAST), "等候区应按新容量装满 3");
+        assertTrue(assertThrows(IllegalStateException.class,
+                () -> submit("RC-4", 20, "FAST"),
+                "等候区按新 N=3 判满，第 4 辆应被拒").getMessage().contains("等候区已满"));
+        // @Transactional：本用例结束自动回滚，拓扑恢复默认，不影响其它用例
     }
 
     @Test

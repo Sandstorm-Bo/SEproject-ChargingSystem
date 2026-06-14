@@ -140,7 +140,7 @@ public class DispatchController {
     }
 
     /**
-     * 切换“自动叫号调度”运行期开关：关闭后车辆停留等候区，便于用批量/指定/故障等调度方式手动接管。
+     * 切换"自动叫号调度"运行期开关：关闭后车辆停留等候区，便于用批量/指定/故障等调度方式手动接管。
      * POST /api/dispatch/auto?enabled=false
      */
     @PostMapping("/auto")
@@ -148,6 +148,83 @@ public class DispatchController {
         com.charging.station.service.ChargingScheduler.setAutoDispatch(enabled);
         return Result.success(enabled ? "自动叫号调度已开启"
                 : "自动叫号调度已暂停：车辆停留等候区，可用批量/指定/故障调度方式手动调度", enabled);
+    }
+
+    /**
+     * §27 切换"故障在充车"处理口径（验收随机/按老师认可口径）：
+     *   terminal（默认）= 按已充量出账并置中断终态、剩余电量不重排（§27/§28/§29 字面口径）；
+     *   requeue        = 按已充量出账后，剩余电量随该车最高优先重新调度续充。
+     * POST /api/dispatch/interrupt-policy?policy=terminal|requeue
+     */
+    @PostMapping("/interrupt-policy")
+    public Result<String> setInterruptPolicy(@RequestParam String policy) {
+        boolean requeue = "requeue".equalsIgnoreCase(policy);
+        DispatchService.setInterruptPolicy(requeue
+                ? DispatchService.InterruptPolicy.REQUEUE
+                : DispatchService.InterruptPolicy.TERMINAL);
+        return Result.success(requeue
+                ? "故障在充车口径：剩余电量续充（requeue）"
+                : "故障在充车口径：终态离开（terminal，默认）",
+                DispatchService.getInterruptPolicy().name());
+    }
+
+    /**
+     * 查询当前 §27 故障在充车口径。
+     * GET /api/dispatch/interrupt-policy
+     */
+    @GetMapping("/interrupt-policy")
+    public Result<String> getInterruptPolicy() {
+        return Result.success(DispatchService.getInterruptPolicy().name());
+    }
+
+    /**
+     * §7 显式设置"当前生效的故障调度策略"（服务器端持久持有；验收随机选择启用哪种即调用此项）。
+     * POST /api/dispatch/fault-strategy?strategy=priority|timeorder
+     */
+    @PostMapping("/fault-strategy")
+    public Result<String> setFaultStrategy(@RequestParam String strategy) {
+        boolean timeorder = "timeorder".equalsIgnoreCase(strategy) || "time_order".equalsIgnoreCase(strategy);
+        DispatchService.setActiveFaultStrategy(timeorder
+                ? DispatchService.FaultStrategy.TIME_ORDER
+                : DispatchService.FaultStrategy.PRIORITY);
+        return Result.success(timeorder ? "当前生效故障策略：时间顺序调度" : "当前生效故障策略：优先级调度",
+                DispatchService.getActiveFaultStrategy().name());
+    }
+
+    /**
+     * 查询当前生效的故障调度策略。
+     * GET /api/dispatch/fault-strategy
+     */
+    @GetMapping("/fault-strategy")
+    public Result<String> getFaultStrategy() {
+        return Result.success(DispatchService.getActiveFaultStrategy().name());
+    }
+
+    /**
+     * 按【当前生效策略】触发桩故障调度（不带策略参数；服务器用 activeFaultStrategy 决定优先级/时间顺序）。
+     * POST /api/dispatch/fault?pileId=P_F1
+     */
+    @PostMapping("/fault")
+    public Result<String> handlePileFault(@RequestParam String pileId) {
+        try {
+            String result = stationLock.call(() -> dispatchService.handlePileFault(pileId));
+            return Result.success(result);
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 一览当前服务器端调度配置（供演示/核验"正在使用的调度策略"）：故障策略、在充车口径、自动叫号开关。
+     * GET /api/dispatch/strategy
+     */
+    @GetMapping("/strategy")
+    public Result<java.util.Map<String, Object>> currentStrategy() {
+        java.util.Map<String, Object> m = new java.util.HashMap<>();
+        m.put("faultStrategy", DispatchService.getActiveFaultStrategy().name());
+        m.put("interruptPolicy", DispatchService.getInterruptPolicy().name());
+        m.put("autoDispatch", com.charging.station.service.ChargingScheduler.isAutoDispatch());
+        return Result.success(m);
     }
 
     /**

@@ -129,6 +129,9 @@ public class ChargingScheduler {
     }
 
     private void reconcileOnce() {
+        // 0) §7a/§7b 故障队列续排：其它同类型桩一旦腾出空位，先把仍滞留在故障桩排队队列里的车按号优先移入，
+        //    严格优先于等候区叫号；故障队列清空前 dispatchWhenEmptySlot 会跳过该模式（暂停叫号）。
+        safely(dispatchService::drainFaultQueues);
         // 1) 等候区 -> 桩排队区（自动叫号；可被运行期开关暂停以演示批量/指定调度方式）
         if (autoDispatch) {
             safely(dispatchService::dispatchWhenEmptySlot);

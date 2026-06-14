@@ -67,8 +67,17 @@ public class ChargingApplicationService {
             throw new IllegalStateException("该车辆已有活跃的充电请求");
         }
 
+        // 等候区是「快/慢共用的单一物理区域」，容量 = WaitingAreaSize(N)。
+        // 必须按两种模式的 WAITING 车辆「总数」判满；若各自队列单独按 N 判满，
+        // 上限会变成 2N（快 N + 慢 N），导致等候区实际可超过 N（如 8 快 + 3 慢 = 11 > 10）。
         WaitingQueue waitingQueue = queueMapper.getWaitingQueue(dto.getRequestModeEnum());
-        if (waitingQueue == null || waitingQueue.isFull()) {
+        if (waitingQueue == null) {
+            throw new IllegalStateException("等候区未初始化");
+        }
+        int waitingTotal = requestMapper.getWaitingRequests(RequestMode.FAST.name()).size()
+                + requestMapper.getWaitingRequests(RequestMode.TRICKLE.name()).size();
+        Integer waitingCap = waitingQueue.getMaxCapacity();
+        if (waitingCap == null || waitingTotal >= waitingCap) {
             throw new IllegalStateException("等候区已满");
         }
 

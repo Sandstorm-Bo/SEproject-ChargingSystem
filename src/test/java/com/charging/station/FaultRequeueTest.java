@@ -145,7 +145,7 @@ public class FaultRequeueTest {
     }
 
     @Test
-    @DisplayName("时间顺序故障：充电车标记中断(终态)，同桩排队(未充电)车迁回等候区并在恢复后重排")
+    @DisplayName("时间顺序故障：充电车标记中断(终态)，同桩排队(未充电)车无空位时留在故障桩队列继续等，恢复后重排")
     public void chargingCarTerminatedWhileQueuedCarRequeued() {
         monitoringService.resetAll();
         dispatchService.handlePileFaultByPriority(FAST_PILE_2); // 仅 F1 可用
@@ -160,8 +160,12 @@ public class FaultRequeueTest {
         dispatchService.handlePileFaultByTimeOrder(FAST_PILE);
         // 充电车 A：终态中断、不重排
         assertEquals(CarState.INTERRUPTED, requestMapper.getChargingRequest(CAR_A).getRequestStatus());
-        // 排队车 B：未开始充电，迁回等候区
-        assertEquals(CarState.WAITING, requestMapper.getChargingRequest(CAR_B).getRequestStatus());
+        // 排队车 B：未开始充电，但此刻无其它可用快充桩 →
+        // §7b：留在故障桩 F1 排队队列里继续等（不回灌等候区），待腾位/恢复后重排
+        ChargingRequest bAfterFault = requestMapper.getChargingRequest(CAR_B);
+        assertEquals(CarState.QUEUED_AT_PILE, bAfterFault.getRequestStatus(),
+                "无空位的排队车应留在故障桩队列继续等");
+        assertEquals(FAST_PILE, bAfterFault.getPileId(), "留守车仍挂在故障桩 F1，而非进等候区");
 
         // 恢复 F2：B 被重新调度入桩；A 仍为终态
         dispatchService.recoverPileAndRedispatch(FAST_PILE_2);

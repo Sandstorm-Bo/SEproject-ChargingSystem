@@ -30,6 +30,30 @@
     .preset{ display:grid; grid-template-columns:repeat(5,1fr); gap:7px; }
     .preset .btn{ padding:9px 0; font-family:var(--mono); }
     .preset .btn.on{ background:linear-gradient(135deg,var(--energy),var(--energy-2)); color:var(--energy-ink); border-color:transparent; }
+    /* —— 充电桩内：充电位 + 桩前等候位 —— */
+    .minibay{ align-items:flex-start; }
+    .minfo .mb{ flex-wrap:wrap; }
+    .minfo .mb.empty{ color:var(--text-mute); }
+    .minfo .mb.charging b{ color:var(--text); }
+    .qrow{ display:flex; align-items:center; flex-wrap:wrap; gap:5px; margin-top:7px; }
+    .qrow .qlabel{ font-family:var(--mono); font-size:9px; letter-spacing:1px; color:var(--text-faint); text-transform:uppercase; }
+    .qcar{ display:inline-flex; align-items:center; gap:4px; padding:2px 7px 2px 5px; border-radius:7px; border:1px solid var(--line-2); background:var(--panel-3); }
+    .qcar .caricon{ width:20px; height:10px; color:var(--blue); flex:0 0 auto; }
+    .qcar.fast .caricon{ color:var(--energy); } .qcar.trickle .caricon{ color:var(--violet); }
+    .qcar b{ font-family:var(--mono); font-size:11px; color:var(--text-dim); }
+    .qcar i{ font-style:normal; font-family:var(--mono); font-size:9px; color:var(--text-faint); }
+    .qcar.stuck{ border-color:rgba(255,101,119,.42); background:rgba(255,101,119,.08); }
+    .qcar.stuck b, .qcar.stuck i, .qcar.stuck .caricon{ color:#ffb3bc; }
+    .qslot-empty{ display:inline-flex; align-items:center; padding:3px 8px; border-radius:7px; border:1px dashed var(--line); color:var(--text-faint); font-size:9px; font-family:var(--mono); }
+    /* —— 等候区 —— */
+    .waitgrid{ display:flex; flex-wrap:wrap; gap:8px; min-height:30px; }
+    .wcar{ display:inline-flex; align-items:center; gap:7px; padding:7px 9px; border-radius:10px; border:1px solid var(--line-2); background:linear-gradient(135deg,rgba(255,180,61,.07),var(--panel-3)); }
+    .wcar .caricon{ width:28px; height:14px; color:var(--amber); flex:0 0 auto; }
+    .wcar.fast .caricon{ color:var(--energy); } .wcar.trickle .caricon{ color:var(--violet); }
+    .wcar b{ font-family:var(--mono); font-size:12.5px; color:var(--text); }
+    .wcar small{ font-family:var(--mono); font-size:10px; color:var(--text-mute); }
+    .wcar .qn{ font-family:var(--mono); font-size:9.5px; color:var(--energy-ink); background:var(--amber); border-radius:5px; padding:1px 6px; font-weight:600; }
+    .wait-empty{ color:var(--text-mute); font-size:12.5px; display:flex; align-items:center; height:30px; }
   </style>
 </head>
 <body>
@@ -79,6 +103,14 @@
         </section>
 
         <section class="card rise" style="--d:1">
+          <div class="section-head">
+            <div class="section-title"><span class="bar"></span>等候区 · 候车</div>
+            <span class="chip mono flat" id="waitCount">0 / 0</span>
+          </div>
+          <div id="waitArea" class="waitgrid"><div class="wait-empty">○ 等候区空闲，无车辆排队</div></div>
+        </section>
+
+        <section class="card rise" style="--d:2">
           <div class="section-head">
             <div class="section-title"><span class="bar"></span>系统日志</div>
             <button class="btn btn-ghost btn-sm" onclick="clearLog()">清空</button>
@@ -135,10 +167,15 @@
             <div class="section-title"><span class="bar"></span>故障调度方式 · 7</div>
             <span class="section-hint">验收随机选择策略</span>
           </div>
-          <div class="field-label">选择调度策略（点击充电桩或下方按钮按此策略处理故障）</div>
-          <select class="input" id="strategy" style="margin:6px 0 12px;">
+          <div class="field-label">当前生效的故障调度策略（改动即写入服务器·点桩/按钮按此策略处理；验收随机选其一）</div>
+          <select class="input" id="strategy" style="margin:6px 0 12px;" onchange="onStrategyChange()">
             <option value="priority">🔺 7a 优先级调度（仅故障桩排队车优先重排）</option>
             <option value="timeorder">⏱ 7b 时间顺序调度（故障桩+同类型桩未充电车合并按号重排）</option>
+          </select>
+          <div class="field-label">§27 故障在充车口径（服务器端当前生效）</div>
+          <select class="input" id="interruptPolicy" style="margin:6px 0 12px;" onchange="onInterruptPolicyChange()">
+            <option value="terminal">终态离开（默认·停止计费出一条详单，剩余不重排）</option>
+            <option value="requeue">剩余电量续充（部分计费后剩余量最高优先重排）</option>
           </select>
           <div class="field-label">快捷故障注入</div>
           <div class="row wrap" id="quickFault" style="gap:8px;margin-bottom:12px;"></div>
@@ -323,22 +360,51 @@
     function station(p) {
       const off = p.status === 'OFFLINE' || p.status === 'CLOSED';
       const cls = p.status === 'BUSY' ? 's-busy' : p.status === 'FAULT' ? 's-fault' : off ? 's-off' : '';
+      const mode = p.pileType === 'FAST' ? 'fast' : 'trickle';
+      const queued = p._queued || [];          // 桩前等候车（不含在充车，按队位升序）
+      const M = p.queueCapacityM || 0;
+
+      // 一辆排队/滞留车的小标签
+      const qcar = (carId, m, label, stuck) =>
+        `<span class="qcar ${m === 'FAST' ? 'fast' : 'trickle'}${stuck ? ' stuck' : ''}"><svg class="caricon"><use href="#car"/></svg><b>${carId}</b>${label ? `<i>${label}</i>` : ''}</span>`;
+
       const pill = p.status === 'BUSY' ? '<span class="pill live"><span class="dot"></span>充电</span>'
         : p.status === 'FAULT' ? '<span class="pill fault"><span class="dot"></span>故障</span>'
         : off ? '<span class="pill off"><span class="dot"></span>已关闭</span>'
-        : p.queueLength > 0 ? `<span class="pill wait"><span class="dot"></span>排队${p.queueLength}</span>`
+        : queued.length > 0 ? `<span class="pill wait"><span class="dot"></span>排队${queued.length}</span>`
         : '<span class="pill idle"><span class="dot"></span>空闲</span>';
-      const mode = p.pileType === 'FAST' ? 'fast' : 'trickle';
+
       let body;
-      if (p.status === 'BUSY' && p.currentCarId) {
-        body = `<div class="mb ${mode}"><svg class="caricon"><use href="#car"/></svg><b class="mono">${p.currentCarId}</b> · ${p.chargeProgress || 0}%</div>`;
-      } else if (p.status === 'FAULT') {
-        body = `<div class="mb" style="color:#ffb3bc;">⚠ ${p.faultReason || '已停机'}</div>`;
+      if (p.status === 'FAULT') {
+        // 故障 = 车停在原地待调度、不顶车：在充车(被中断) + 桩前排队车，整列原样红显
+        const tags = [];
+        if (p.currentCarId) tags.push(qcar(p.currentCarId, p.pileType, '在充·中断', true));
+        queued.forEach(w => tags.push(qcar(w.carId, w.mode, '待重排', true)));
+        body = `<div class="mb">${tags.length ? tags.join('')
+          : `<span style="color:#ffb3bc;">⚠ ${p.faultReason || '故障 · 待恢复'}</span>`}</div>`;
       } else if (off) {
-        body = `<div class="mb" style="color:var(--text-mute);">⏻ 已关闭 · 不参与调度</div>`;
+        body = `<div class="mb empty">⏻ 已关闭 · 不参与调度</div>`;
       } else {
-        body = `<div class="mb">${p.queueLength > 0 ? p.queueLength + ' 辆排队' : '空闲 · 点击注入故障'}</div>`;
+        // 充电位（正在充电的车 + 进度）
+        const charging = (p.status === 'BUSY' && p.currentCarId)
+          ? `<div class="mb ${mode} charging"><svg class="caricon"><use href="#car"/></svg><b class="mono">${p.currentCarId}</b> · 充电中 ${p.chargeProgress || 0}%</div>`
+          : `<div class="mb empty">○ 充电位空闲</div>`;
+        // 桩前等候位：充电中或有排队车时展示（含剩余空位），全空闲则收起保持简洁
+        let qrow = '';
+        if ((p.status === 'BUSY' || queued.length > 0) && M > 0) {
+          const slots = [];
+          for (let i = 0; i < M; i++) {
+            const w = queued[i];
+            slots.push(w ? qcar(w.carId, w.mode, '队' + (w.queuePosition || i + 1))
+                         : `<span class="qslot-empty">空位</span>`);
+          }
+          qrow = `<div class="qrow"><span class="qlabel">等候</span>${slots.join('')}</div>`;
+        } else if (queued.length) {
+          qrow = `<div class="qrow"><span class="qlabel">等候</span>${queued.map(w => qcar(w.carId, w.mode, '队' + (w.queuePosition || ''))).join('')}</div>`;
+        }
+        body = charging + qrow;
       }
+
       // 启动/关闭按钮（需求 c)：管理员启动/关闭充电桩），与点击卡片注入故障互不干扰
       const powerBtn = off
         ? `<button class="btn btn-success btn-sm" onclick="pileRun(event,'${p.pileId}')">▶ 启动</button>`
@@ -358,8 +424,39 @@
     function update(data) {
       if (!data || !data.piles) return;
       lastPiles = data.piles;
+      // 把每个桩"桩前排队区里的车"挂到桩对象上（来自 waiting 列表的 QUEUED_AT_PILE/CALLED/INTERRUPTED）：
+      // 供充电桩监控渲染「正在充电 + 桩前等候车辆」，故障桩则把滞留车原地标红展示（不顶车）。
+      const atPile = {};
+      (data.waiting || []).forEach(w => {
+        if (w.pileId && (w.status === 'QUEUED_AT_PILE' || w.status === 'CALLED' || w.status === 'INTERRUPTED')) {
+          (atPile[w.pileId] = atPile[w.pileId] || []).push(w);
+        }
+      });
+      data.piles.forEach(p => {
+        p._queued = (atPile[p.pileId] || []).sort((a, b) => (a.queuePosition || 0) - (b.queuePosition || 0));
+      });
       syncPileControls(data.piles);
       document.getElementById('stations').innerHTML = data.piles.map(station).join('');
+
+      // 等候区车辆（WAITING：到站但尚未进入任何桩前队列）——逐辆展示
+      const waitArea = (data.waiting || []).filter(w => w.status === 'WAITING');
+      const waEl = document.getElementById('waitArea');
+      if (waEl) {
+        waEl.innerHTML = waitArea.length
+          ? waitArea.map(w => `<span class="wcar ${w.mode === 'FAST' ? 'fast' : 'trickle'}">
+              <svg class="caricon"><use href="#car"/></svg>
+              <b>${w.carId}</b>
+              <small>${F.pileType(w.mode)} ${F.num(w.requestAmount, 0)}度</small>
+              ${w.queueNum ? `<span class="qn">${w.queueNum}</span>` : ''}
+            </span>`).join('')
+          : '<div class="wait-empty">○ 等候区空闲，无车辆排队</div>';
+      }
+      const wc = document.getElementById('waitCount');
+      if (wc) {
+        const cap = (data.stationConfig && data.stationConfig.waitingSize) || 0;
+        wc.textContent = `${data.waitingAreaCount || 0} / ${cap}`;
+        wc.className = 'chip mono ' + (cap && (data.waitingAreaCount || 0) >= cap ? 'wait' : 'flat');
+      }
       document.getElementById('sCharging').textContent = data.piles.filter(p => p.status === 'BUSY').length;
       document.getElementById('sWaiting').textContent = `${data.waitingAreaCount || 0} / ${data.queuedAtPileCount || 0}`;
       document.getElementById('sFault').textContent = data.piles.filter(p => p.status === 'FAULT').length;
@@ -506,6 +603,32 @@
         if (r && r.data) log('› ' + r.data, 'info');
       } catch (e) { log('故障调度失败: ' + e.message, 'error'); }
     }
+    // 服务器端"当前生效的故障调度策略"——下拉改动即持久化到后端（满足"显式修改正在使用的调度策略"）
+    async function onStrategyChange() {
+      const strategy = document.getElementById('strategy').value;
+      try {
+        const r = await ION.post('/dispatch/fault-strategy', { strategy });
+        log(r.message || ('当前生效故障策略已设为：' + strategy), 'success');
+      } catch (e) { log('设置故障策略失败: ' + e.message, 'error'); }
+    }
+    // §27 故障在充车口径（终态/续充）——同样持久化到后端
+    async function onInterruptPolicyChange() {
+      const policy = document.getElementById('interruptPolicy').value;
+      try {
+        const r = await ION.post('/dispatch/interrupt-policy', { policy });
+        log(r.message || ('在充车口径已设为：' + policy), 'success');
+      } catch (e) { log('设置在充车口径失败: ' + e.message, 'error'); }
+    }
+    // 启动时把界面同步成服务器端"当前生效"的策略/口径，避免显示与后端不一致
+    async function syncStrategyUI() {
+      try {
+        const r = await ION.getJson('/dispatch/strategy');
+        const d = (r && r.data) || {};
+        if (d.faultStrategy) document.getElementById('strategy').value = (d.faultStrategy === 'TIME_ORDER') ? 'timeorder' : 'priority';
+        if (d.interruptPolicy) document.getElementById('interruptPolicy').value = (d.interruptPolicy === 'REQUEUE') ? 'requeue' : 'terminal';
+      } catch (e) { /* 服务器未就绪时忽略，操作时仍会显式下发 */ }
+    }
+    syncStrategyUI();
     async function recoverAll() {
       const ids = (lastPiles.length ? lastPiles.map(p => p.pileId) : ['P_F1', 'P_F2', 'P_T1', 'P_T2', 'P_T3']);
       for (const p of ids) { try { await ION.post('/dispatch/recover', { pileId: p }); } catch (e) {} }
@@ -750,9 +873,12 @@
         // 保证每次演示都在标准参数下复现，避免历史遗留的非默认桩数（如多出的 F3）干扰结果。
         await ION.post('/monitor/station-config', { fastNum: 2, trickleNum: 3, waitingSize: 10, queueLen: 2 });
         await ION.post('/dispatch/auto', { enabled: true });   // 确保自动叫号调度开启（核心调度验收口径）
+        // 故障在充车口径=requeue：桩故障时在充车不被顶掉，按已充量出账后剩余电量随车最高优先重排续充，
+        // 与验收表一致（故障=车停在原地等待调度，整列标红、不离开），保证前端演示与表格同效。
+        await ION.post('/dispatch/interrupt-policy', { policy: 'requeue' });
         await ION.post('/monitor/sim-speed', { value: speed });
         await ION.post('/monitor/sim-clock', { start: '06:00' }); // 最后锚定，确保起跑即 06:00
-        log(`已重建官方拓扑(快2·慢3·等候区10·队列M2)并清空 · 自动调度开启 · 倍速 ${speed}× · 锚定仿真时钟 06:00`, 'info');
+        log(`已重建官方拓扑(快2·慢3·等候区10·队列M2)并清空 · 自动调度开启 · 故障在充车=原地待调度(requeue) · 倍速 ${speed}× · 锚定仿真时钟 06:00`, 'info');
       } catch (e) {
         log('初始化失败：' + e.message, 'error'); _finishDemo(false); return;
       }

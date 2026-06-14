@@ -76,9 +76,29 @@ public class FaultAndExtendedDispatchTest {
         dispatch.handlePileFaultByPriority("P_T1"); // 仅 c1,c2 被重排；c3 应留在 T2 不动
         assertEquals("P_T2", pile("CX3"), "优先级策略不应触碰其它桩的车");
         assertEquals(CarState.QUEUED_AT_PILE, state("CX3"));
-        // c1,c2 被迁出故障桩：只有 T2 一个空位 → 较早的 c1 进 T2，c2 回等候区
+        // c1,c2 被迁出故障桩：只有 T2 一个空位 → 较早的 c1 进 T2，
+        // c2 无空位 → §7a：留在故障桩 P_T1 排队队列里继续等（不回灌等候区）
         assertEquals("P_T2", pile("CX1"));
-        assertEquals(CarState.WAITING, state("CX2"), "无空位的 c2 应留等候区");
+        assertEquals(CarState.QUEUED_AT_PILE, state("CX2"), "无空位的 c2 应留在故障桩队列继续等");
+        assertEquals("P_T1", pile("CX2"), "落单车留在故障桩 P_T1 队列，而非进等候区");
+    }
+
+    @Test
+    @DisplayName("优先级故障：故障队列滞留车在其它同类型桩腾出空位后被按号优先移入")
+    void strandedFaultCarDrainsWhenSlotFrees() throws InterruptedException {
+        buildTwoPileLayout();
+        dispatch.handlePileFaultByPriority("P_T1");
+        assertEquals("P_T1", pile("CX2"), "前置：CX2 滞留故障桩队列");
+        assertEquals(CarState.QUEUED_AT_PILE, state("CX2"));
+
+        // T2 腾出一个空位（CX3 完成离场），再触发一次对账（编排器关闭，手动调 drain）
+        app.callVehicle("CX3");
+        app.startCharging("CX3", "P_T2");
+        app.endCharging("CX3", "P_T2");
+        dispatch.drainFaultQueues();
+
+        assertEquals("P_T2", pile("CX2"), "腾位后 CX2 应被从故障桩队列移入 T2");
+        assertEquals(CarState.QUEUED_AT_PILE, state("CX2"));
     }
 
     @Test
@@ -86,12 +106,14 @@ public class FaultAndExtendedDispatchTest {
     void timeOrderFaultPullsOtherPileCars() throws InterruptedException {
         buildTwoPileLayout();
         dispatch.handlePileFaultByTimeOrder("P_T1"); // c1,c2(T1) + c3(T2) 合并按时间序重排
-        // 唯一可用桩 T2(M=2)：按提交序 c1,c2 占满，c3 被挤回等候区——证明 c3 确实被并入重排
+        // 唯一可用桩 T2(M=2)：按提交序 c1,c2 占满，c3 无空位
+        // → §7b：留在故障桩 P_T1 队列继续等（不回灌等候区）——证明 c3 确实被并入重排
         assertEquals(CarState.QUEUED_AT_PILE, state("CX1"));
         assertEquals(CarState.QUEUED_AT_PILE, state("CX2"));
         assertEquals("P_T2", pile("CX1"));
         assertEquals("P_T2", pile("CX2"));
-        assertEquals(CarState.WAITING, state("CX3"), "被并入重排的 c3 因时间最晚被挤回等候区");
+        assertEquals(CarState.QUEUED_AT_PILE, state("CX3"), "被并入重排、因时间最晚落单的 c3 留在故障桩队列继续等");
+        assertEquals("P_T1", pile("CX3"), "落单车留在故障桩 P_T1 队列，而非进等候区");
     }
 
     @Test
@@ -141,9 +163,9 @@ public class FaultAndExtendedDispatchTest {
         submit("FB2", 30, "FAST");
         submit("FB3", 20, "TRICKLE");
         submit("FB4", 10, "TRICKLE");
-        // 车位数 = 5 桩×(1正充+2排队) + 等候区(10+10) = 15 + 20 = 35；当前到站 4 辆
+        // 车位数 = 5 桩×(1正充+2排队) + 等候区 N=10(快/慢共用单一区域) = 15 + 10 = 25；当前到站 4 辆
         assertEquals(4, dispatch.countArrivedCars(), "到站车辆数");
-        assertEquals(35, dispatch.totalStationCapacity(), "全部车位数=充电区+等候区");
+        assertEquals(25, dispatch.totalStationCapacity(), "全部车位数=充电区+等候区(共用N)");
         assertThrows(IllegalStateException.class,
                 () -> dispatch.dispatchFullStationBatchMinTotalDuration(false),
                 "未达全部车位数应拒绝批量调度");
@@ -169,5 +191,69 @@ public class FaultAndExtendedDispatchTest {
         assertEquals(5.0, plan.getTotalDuration(), 0.02, "总完成时长应为任意桩 SPT 贪心解");
         assertEquals(0, queueMapper.getWaitingQueue(RequestMode.FAST).getQueueLength());
         assertEquals(0, queueMapper.getWaitingQueue(RequestMode.TRICKLE).getQueueLength());
+    }
+
+    // ============ §28/§27 严格合规回归（本轮新增）============
+
+    @Test
+    @DisplayName("§28 优先级：故障队列车严格优先于等候区已有(更早提交)的车抢占空位")
+    void priorityFaultCarBeatsEarlierWaitingCar() throws InterruptedException {
+        dispatch.handlePileFaultByPriority("P_T3");          // 慢充仅 T1,T2 可用
+        submit("WE", 20, "TRICKLE");  Thread.sleep(1100);    // 最早提交，但故意滞留等候区（不分配）
+        submit("FQ1", 20, "TRICKLE"); Thread.sleep(1100);
+        submit("FQ2", 20, "TRICKLE"); Thread.sleep(1100);
+        submit("OT", 20, "TRICKLE");
+        dispatch.assignCarToPile("FQ1", "P_T1");
+        dispatch.assignCarToPile("FQ2", "P_T1");             // T1 满 [FQ1,FQ2]
+        dispatch.assignCarToPile("OT", "P_T2");              // T2 [OT]，余 1 空位
+        assertEquals(CarState.WAITING, state("WE"), "WE 提交最早但滞留等候区");
+
+        dispatch.handlePileFaultByPriority("P_T1");          // 故障车 FQ1,FQ2 重排，仅 T2 一个空位可抢
+        // §28：故障队列车优先于等候区的 WE —— 较早的 FQ1 占 T2 唯一空位；WE 仍在等候区。
+        // （旧实现把故障车并入等候区按 requestTime 排，会让更早的 WE 抢到 T2 → 违反 §28）
+        assertEquals("P_T2", pile("FQ1"), "故障车应优先于等候区车占用空位");
+        assertEquals(CarState.QUEUED_AT_PILE, state("FQ1"));
+        assertEquals(CarState.WAITING, state("WE"), "更早提交的 WE 不得抢在故障车之前，且故障队列未清空前暂停叫号");
+        assertEquals(CarState.QUEUED_AT_PILE, state("FQ2"), "T2 仅一空位，落单的 FQ2 留在故障桩 P_T1 队列继续等");
+        assertEquals("P_T1", pile("FQ2"));
+    }
+
+    @Test
+    @DisplayName("§27 开关=REQUEUE：故障在充车按已充量出账后，剩余电量重排续充（非终态）")
+    void requeuePolicyContinuesInterruptedChargingCar() {
+        try {
+            DispatchService.setInterruptPolicy(DispatchService.InterruptPolicy.REQUEUE);
+            dispatch.handlePileFaultByPriority("P_T2");      // 慢充仅 T1 可用 → RA 确定上 T1
+            dispatch.handlePileFaultByPriority("P_T3");
+            submit("RA", 20, "TRICKLE");
+            dispatch.dispatchWhenEmptySlot();                // RA → T1 排队
+            app.callVehicle("RA");
+            app.startCharging("RA", "P_T1");                 // RA 在 T1 充电
+            assertEquals(CarState.CHARGING, state("RA"));
+
+            dispatch.handlePileFaultByPriority("P_T1");      // 唯一在充桩故障
+            // REQUEUE：在充车不置终态；剩余电量重排（此处无其它慢充桩可用 →
+            // §7a：留在故障桩 P_T1 队列继续等，待腾位后续充，而非回等候区）
+            assertNotEquals(CarState.INTERRUPTED, state("RA"), "REQUEUE 下在充车不应是终态");
+            assertEquals(CarState.QUEUED_AT_PILE, state("RA"), "剩余电量应留在故障桩队列待续充");
+            assertEquals("P_T1", pile("RA"), "落单的续充车留在故障桩 P_T1 队列，而非进等候区");
+        } finally {
+            DispatchService.setInterruptPolicy(DispatchService.InterruptPolicy.TERMINAL);
+        }
+    }
+
+    @Test
+    @DisplayName("§27 默认=TERMINAL：故障在充车出账后置中断终态、不重排（保持现有口径）")
+    void terminalPolicyKeepsChargingCarInterrupted() {
+        dispatch.handlePileFaultByPriority("P_T2");
+        dispatch.handlePileFaultByPriority("P_T3");
+        submit("TA", 20, "TRICKLE");
+        dispatch.dispatchWhenEmptySlot();
+        app.callVehicle("TA");
+        app.startCharging("TA", "P_T1");
+        assertEquals(CarState.CHARGING, state("TA"));
+
+        dispatch.handlePileFaultByPriority("P_T1");
+        assertEquals(CarState.INTERRUPTED, state("TA"), "默认 TERMINAL 下在充车应为中断终态");
     }
 }

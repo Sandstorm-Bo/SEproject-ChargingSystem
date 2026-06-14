@@ -88,7 +88,7 @@ public class MonitoringService {
      *
      * @param fastNum      快充桩数（>=0）
      * @param trickleNum   慢充桩数（>=0，且快+慢>=1）
-     * @param waitingSize  等候区车位容量（每模式，>=1）
+     * @param waitingSize  等候区车位容量 N（快/慢共用的单一物理区域，按 WAITING 总数判满，>=1）
      * @param queueLen     每个充电桩排队队列长度 M（>=1）
      */
     @Transactional

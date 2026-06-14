@@ -47,6 +47,50 @@ public class DispatchService {
     private SchedulerTrigger schedulerTrigger;
 
     /**
+     * §27 故障在充车处理策略（运行期可切，验收用）：
+     * TERMINAL=按已充量出账并置中断终态、剩余电量不重排（默认；§27"停止计费/一条详单" + §28"等候队列"/§29"尚未充电的车辆"字面口径）；
+     * REQUEUE =按已充量出账后，剩余电量随该车最高优先重新调度续充。
+     */
+    public enum InterruptPolicy { TERMINAL, REQUEUE }
+
+    private static volatile InterruptPolicy interruptPolicy = InterruptPolicy.TERMINAL;
+
+    public static void setInterruptPolicy(InterruptPolicy p) {
+        interruptPolicy = p;
+    }
+
+    public static InterruptPolicy getInterruptPolicy() {
+        return interruptPolicy;
+    }
+
+    /**
+     * §7 当前生效的故障调度策略（服务器端持久持有、可显式修改；验收"随机选择启用哪种"即设置此项）：
+     * PRIORITY=优先级调度(§28) / TIME_ORDER=时间顺序调度(§29)。默认 PRIORITY（验收默认优先级）。
+     */
+    public enum FaultStrategy { PRIORITY, TIME_ORDER }
+
+    private static volatile FaultStrategy activeFaultStrategy = FaultStrategy.PRIORITY;
+
+    public static void setActiveFaultStrategy(FaultStrategy s) {
+        activeFaultStrategy = s;
+    }
+
+    public static FaultStrategy getActiveFaultStrategy() {
+        return activeFaultStrategy;
+    }
+
+    /**
+     * 按【当前生效的故障调度策略】处理桩故障——故障事件不带策略参数时走此入口，
+     * 由服务器端 activeFaultStrategy 决定用 §28 优先级还是 §29 时间顺序。
+     */
+    @Transactional
+    public String handlePileFault(String pileId) {
+        return activeFaultStrategy == FaultStrategy.TIME_ORDER
+                ? handlePileFaultByTimeOrder(pileId)
+                : handlePileFaultByPriority(pileId);
+    }
+
+    /**
      * 空位出现时执行调度
      * 设计文档中所有交互图里触发调度的地方都调用此方法
      */
@@ -63,6 +107,11 @@ public class DispatchService {
 
         // 从等候区获取车辆并为每辆车选择最优充电桩
         for (RequestMode mode : RequestMode.values()) {
+            // §7a/§7b：该模式只要还有车滞留在故障桩排队队列里（尚未被重排走），
+            // 就【暂停等候区叫号服务】——故障队列全部清空后才恢复对该模式叫号。
+            if (hasStrandedFaultCars(mode)) {
+                continue;
+            }
             // 直接从数据库查询WAITING状态的车辆
             List<ChargingRequest> waitingRequests = requestMapper.getWaitingRequests(mode.toString());
 
@@ -164,30 +213,33 @@ public class DispatchService {
         pileMapper.updatePileState(faultPile);
         recordFault(pileId, "PRIORITY", "优先级故障调度");
 
-        // 2. 中断正在充电的车辆：按已充量计费并标记为中断(终态)，剩余电量不重排（业务规则 6.3）
+        // 2. 中断正在充电的车辆：按已充量计费出一条详单（§27）。剩余电量去向由 interruptPolicy 决定：
+        //    TERMINAL（默认）置中断终态、不重排；REQUEUE 时剩余量随该车最高优先续充。
+        RequestMode mode = RequestMode.fromString(faultPile.getPileType());
         ChargingRequest interrupted = null;
         ChargingSession activeSession = sessionMapper.getActiveSessionByPileId(pileId);
         if (activeSession != null) {
-            interrupted = interruptSessionAndGenerateBill(activeSession, faultPile, false);
+            interrupted = interruptSessionAndGenerateBill(activeSession, faultPile,
+                    interruptPolicy == InterruptPolicy.REQUEUE);
         }
 
-        // 3. 获取故障桩排队区中尚未开始充电的车辆。
-        //    必须从 DB 实查：queueMapper.getChargingQueueByPileId 不会加载 requests 列表，
-        //    faultQueue.drain() 恒返回空，导致排队车辆被遗弃（既往缺陷）。
-        //    （正在充电的车已按业务规则 6.3 标记中断离开，interrupted 恒为 null，仅重排排队车。）
-        List<ChargingRequest> affectedRequests = new ArrayList<>();
+        // 3. 组成故障重排组：故障桩排队区中"尚未开始充电"的车（从 DB 实查，原因见 queuedRequestsAtPile）；
+        //    REQUEUE 时还含被中断的在充车（剩余量、号最小→最高优先）。TERMINAL 时 interrupted 恒为 null。
+        List<ChargingRequest> faultGroup = new ArrayList<>();
         if (interrupted != null) {
-            affectedRequests.add(interrupted);
+            faultGroup.add(interrupted);
         }
-        affectedRequests.addAll(queuedRequestsAtPile(pileId));
-        resetPileQueueLength(pileId);
+        faultGroup.addAll(queuedRequestsAtPile(pileId));
 
-        // 4. 受影响（尚未开始充电）的车辆按原相对顺序优先迁回等候区。其 requestTime 早于新到车辆，
-        //    dispatchWhenEmptySlot 按 requestTime 升序重新分配时自然优先于等候区其他车辆。
-        requeueToWaiting(affectedRequests, RequestMode.fromString(faultPile.getPileType()));
+        // 4. §7a 优先级：暂停等候区叫号期间，故障队列车按【排队号码】优先占用同类型桩空位，
+        //    严格优先于等候区已有车辆；【安置不下的留在故障桩排队队列里继续等】（不回灌等候区），
+        //    待其它同类型桩腾出空位时再由 drainFaultQueues 按号优先移入。
+        int remaining = assignFaultGroupKeepLeftoversAtPile(faultGroup, mode, pileId);
 
-        // 5. 记录调度并触发重新调度
-        recordDispatchRaw("FAULT_PRIORITY", "pile=" + pileId + ", requeued=" + affectedRequests.size(), affectedRequests.size());
+        // 5. 记录调度并恢复等候区叫号（仍有滞留车时 dispatchWhenEmptySlot 会跳过该模式）
+        recordDispatchRaw("FAULT_PRIORITY",
+                "pile=" + pileId + ", group=" + faultGroup.size() + ", keptAtFaultPile=" + remaining,
+                faultGroup.size());
         dispatchWhenEmptySlot();
 
         schedulerTrigger.afterCommitReconcile();
@@ -214,39 +266,40 @@ public class DispatchService {
         pileMapper.updatePileState(faultPile);
         recordFault(pileId, "TIME_ORDER", "时间顺序故障调度");
 
-        // 2. 中断正在充电的车辆：按已充量计费并标记为中断(终态)，剩余电量不参与重排（业务规则 6.3）
+        // 2. 中断正在充电的车辆：按已充量计费出一条详单（§27）。剩余量去向由 interruptPolicy 决定。
+        RequestMode mode = RequestMode.fromString(faultPile.getPileType());
         ChargingRequest interrupted = null;
         ChargingSession activeSession = sessionMapper.getActiveSessionByPileId(pileId);
         if (activeSession != null) {
-            interrupted = interruptSessionAndGenerateBill(activeSession, faultPile, false);
+            interrupted = interruptSessionAndGenerateBill(activeSession, faultPile,
+                    interruptPolicy == InterruptPolicy.REQUEUE);
         }
 
-        // 3. 获取故障桩排队区中尚未开始充电的车辆（从 DB 实查，原因同优先级调度）
-        RequestMode mode = RequestMode.fromString(faultPile.getPileType());
-        List<ChargingRequest> affectedRequests = new ArrayList<>();
+        // 3. 故障桩排队区中"尚未开始充电"的车（REQUEUE 时含被中断的在充车）
+        List<ChargingRequest> faultGroup = new ArrayList<>();
         if (interrupted != null) {
-            affectedRequests.add(interrupted);
+            faultGroup.add(interrupted);
         }
-        affectedRequests.addAll(queuedRequestsAtPile(pileId));
-        resetPileQueueLength(pileId);
+        faultGroup.addAll(queuedRequestsAtPile(pileId));
 
-        // 4. 收集同类型其他桩排队区中尚未开始充电的车辆（正在充电的车不动）
+        // 4. §7b：把其它同类型桩中"尚未充电"的车一并并入（正在充电的车不动）
         List<ChargingPile> sameModePiles = pileMapper.getAllChargingPiles().stream()
                 .filter(p -> !p.getPileId().equals(pileId) && p.getPileType().equals(faultPile.getPileType()))
                 .collect(Collectors.toList());
 
         for (ChargingPile pile : sameModePiles) {
-            affectedRequests.addAll(queuedRequestsAtPile(pile.getPileId()));
+            faultGroup.addAll(queuedRequestsAtPile(pile.getPileId()));
             resetPileQueueLength(pile.getPileId());
         }
 
-        // 5. 同类型未充电车辆合并后按提交时间（排队号）顺序重排，迁回等候区
-        affectedRequests.sort(Comparator.comparing(ChargingRequest::getRequestTime,
-                Comparator.nullsLast(Comparator.naturalOrder())));
-        requeueToWaiting(affectedRequests, mode);
+        // 5. §7b：合并组按【排队号码】先后顺序优先重排（暂停等候区叫号）；
+        //    【安置不下的留在故障桩排队队列里继续等】（不回灌等候区），其它同类型桩腾位后由 drainFaultQueues 续排。
+        int remaining = assignFaultGroupKeepLeftoversAtPile(faultGroup, mode, pileId);
 
-        // 6. 记录调度并触发重新调度
-        recordDispatchRaw("FAULT_TIME_ORDER", "pile=" + pileId + ", requeued=" + affectedRequests.size(), affectedRequests.size());
+        // 6. 记录调度并恢复等候区叫号（仍有滞留车时 dispatchWhenEmptySlot 会跳过该模式）
+        recordDispatchRaw("FAULT_TIME_ORDER",
+                "pile=" + pileId + ", group=" + faultGroup.size() + ", keptAtFaultPile=" + remaining,
+                faultGroup.size());
         dispatchWhenEmptySlot();
 
         schedulerTrigger.afterCommitReconcile();
@@ -269,24 +322,25 @@ public class DispatchService {
         //    收集同类型所有桩排队区中尚未开始充电的车辆（正在充电的车不动），
         //    按提交时间排序迁回等候区，再由 dispatchWhenEmptySlot 含恢复桩在内重新分配。
         RequestMode mode = RequestMode.fromString(pile.getPileType());
-        List<ChargingRequest> affectedRequests = new ArrayList<>();
+        List<ChargingRequest> recoverGroup = new ArrayList<>();
         for (ChargingPile p : pileMapper.getAllChargingPiles()) {
             if (!p.getPileType().equals(pile.getPileType())) {
                 continue;
             }
             List<ChargingRequest> queued = queuedRequestsAtPile(p.getPileId());
             if (!queued.isEmpty()) {
-                affectedRequests.addAll(queued);
+                recoverGroup.addAll(queued);
                 resetPileQueueLength(p.getPileId());
             }
         }
-        affectedRequests.sort(Comparator.comparing(ChargingRequest::getRequestTime,
-                Comparator.nullsLast(Comparator.naturalOrder())));
-        requeueToWaiting(affectedRequests, mode);
+        // §7c：同类型桩中"尚未充电"的车按【排队号码】先后顺序优先重排（含新恢复的桩，暂停等候区叫号）；
+        //      安置不下的回等候区，再恢复叫号。
+        List<ChargingRequest> leftovers = assignGroupPrioritized(recoverGroup, mode);
+        requeueToWaiting(leftovers, mode);
 
-        // 3. 记录调度并触发重新调度
-        recordDispatchRaw("RECOVER", "pile=" + pileId + ", requeued=" + affectedRequests.size(),
-                affectedRequests.size());
+        // 3. 记录调度并恢复等候区叫号
+        recordDispatchRaw("RECOVER", "pile=" + pileId + ", requeued=" + recoverGroup.size(),
+                recoverGroup.size());
         dispatchWhenEmptySlot();
 
         schedulerTrigger.afterCommitReconcile();
@@ -417,6 +471,156 @@ public class DispatchService {
             waitingQueue.setQueueLength(waitingQueue.getQueueLength() + affected.size());
             queueMapper.updateWaitingQueue(waitingQueue);
         }
+    }
+
+    /**
+     * §6 选桩口径：在"同模式、可调度、排队区有空位"的桩中，选完成时长（等待时间 + 自身充电时间）最短者；
+     * 无可用桩返回 null。与 {@link #dispatchWhenEmptySlot()} 内联选桩同一算法，供故障/恢复的优先重排复用。
+     */
+    private ChargingPile selectBestRoomyPile(ChargingRequest car, String mode) {
+        ChargingPile best = null;
+        double minCompletion = Double.MAX_VALUE;
+        for (ChargingPile pile : pileMapper.getAllChargingPiles()) {
+            if (!pile.canAcceptNewVehicle() || !pile.getPileType().equals(mode)) {
+                continue;
+            }
+            ChargingQueue queue = queueMapper.getChargingQueueByPileId(pile.getPileId());
+            if (queue == null || !queue.hasRoom()) {
+                continue;
+            }
+            double completion = calculateQueueWaitingTime(queue, pile.getRatedPower())
+                    + car.getRequestAmount() / pile.getRatedPower();
+            if (completion < minCompletion) {
+                minCompletion = completion;
+                best = pile;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * §28/§29/§7c「优先级」内核——暂停等候区叫号期间，把故障/恢复重排组按【排队号码先后】
+     * 逐车直接安置到同类型有空位的桩（不经等候区中转，从而严格优先于等候区已有车辆）。
+     * <p>先把整组从原桩摘下（置 WAITING、清空桩归属），以免选桩估时把"还挂在原桩"的本组车重复计入；
+     * 每安置一辆即落库，后续车的等待时间据此累加。返回安置不下的车（由调用方放回等候区，叫号恢复后再处理）。
+     */
+    private List<ChargingRequest> assignGroupPrioritized(List<ChargingRequest> group, RequestMode mode) {
+        List<ChargingRequest> leftovers = new ArrayList<>();
+        if (group == null || group.isEmpty()) {
+            return leftovers;
+        }
+        // 摘下整组：状态置 WAITING、桩归属清空（此时尚未计入等候区计数，安置成功者不再入账，落单者由调用方入账）
+        for (ChargingRequest car : group) {
+            car.moveToWaiting();
+            requestMapper.updateRequestStatus(car);
+            requestMapper.updateVehicleState(car.getCarId(), CarState.WAITING.name());
+        }
+        group.sort(Comparator.comparingInt(DispatchService::queueSeq));
+        for (ChargingRequest car : group) {
+            ChargingPile best = selectBestRoomyPile(car, mode.toString());
+            if (best == null) {
+                leftovers.add(car);
+                continue;
+            }
+            ChargingQueue queue = queueMapper.getChargingQueueByPileId(best.getPileId());
+            queue.enqueue(car);
+            queueMapper.updateChargingQueue(queue);
+            car.assignToPile(best.getPileId(), queue.getCurrentLength());
+            requestMapper.updateRequestStatus(car);
+            requestMapper.updateVehicleState(car.getCarId(), CarState.QUEUED_AT_PILE.name());
+        }
+        return leftovers;
+    }
+
+    /**
+     * §7 故障队列优先重排核心：把一组"尚未充电"的车按【排队号码】先后，逐车安置到同类型【有空位】的桩；
+     * 安置不下的【留在故障桩的排队队列里继续等】（不回灌等候区）。返回仍滞留在故障桩的车辆数。
+     * <p>与 {@link #assignGroupPrioritized} 的唯一区别：落单车不进等候区，而是挂回故障桩排队队列——
+     * 这样既符合 §7a/§7b"暂停等候区叫号、待故障队列全部调度完毕再恢复"的口径，监控上也能看到这些车
+     * 仍在故障桩队列里等待（不会凭空跑去等候区，避免与"溢出"语义混淆）。
+     * <p>先把整组从原桩摘下（置 WAITING、清桩归属），以免选桩估时把"还挂在原桩"的本组车重复计入；
+     * 故障桩本身不可调度，故留守车不会被再次选回。
+     */
+    private int assignFaultGroupKeepLeftoversAtPile(List<ChargingRequest> group, RequestMode mode, String faultPileId) {
+        if (group == null || group.isEmpty()) {
+            ChargingQueue fq = queueMapper.getChargingQueueByPileId(faultPileId);
+            if (fq != null && fq.getCurrentLength() != 0) {
+                fq.setCurrentLength(0);
+                queueMapper.updateChargingQueue(fq);
+            }
+            return 0;
+        }
+        for (ChargingRequest car : group) {
+            car.moveToWaiting();
+            requestMapper.updateRequestStatus(car);
+            requestMapper.updateVehicleState(car.getCarId(), CarState.WAITING.name());
+        }
+        group.sort(Comparator.comparingInt(DispatchService::queueSeq));
+        int kept = 0;
+        for (ChargingRequest car : group) {
+            ChargingPile best = selectBestRoomyPile(car, mode.toString());
+            if (best != null) {
+                ChargingQueue queue = queueMapper.getChargingQueueByPileId(best.getPileId());
+                queue.enqueue(car);
+                queueMapper.updateChargingQueue(queue);
+                car.assignToPile(best.getPileId(), queue.getCurrentLength());
+                requestMapper.updateRequestStatus(car);
+                requestMapper.updateVehicleState(car.getCarId(), CarState.QUEUED_AT_PILE.name());
+            } else {
+                // 无空位：留在故障桩排队队列继续等（保留原排队号，恢复/腾位后仍按号最优先重排）
+                kept++;
+                car.assignToPile(faultPileId, kept);
+                requestMapper.updateRequestStatus(car);
+                requestMapper.updateVehicleState(car.getCarId(), CarState.QUEUED_AT_PILE.name());
+            }
+        }
+        ChargingQueue fq = queueMapper.getChargingQueueByPileId(faultPileId);
+        if (fq != null) {
+            fq.setCurrentLength(kept);
+            queueMapper.updateChargingQueue(fq);
+        }
+        return kept;
+    }
+
+    /** 某模式下是否仍有车滞留在【故障桩】排队队列里（用于 §7a/§7b 暂停该模式等候区叫号）。 */
+    private boolean hasStrandedFaultCars(RequestMode mode) {
+        for (ChargingPile p : pileMapper.getAllChargingPiles()) {
+            if (p.getStatus() == PileStatus.FAULT
+                    && p.getPileType().equals(mode.toString())
+                    && !queuedRequestsAtPile(p.getPileId()).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * §7a/§7b 反应式续排：每当其它同类型桩腾出空位（一次对账内），把仍滞留在故障桩排队队列里的车
+     * 按【排队号码】优先移入。被 {@link ChargingScheduler} 对账时优先于等候区叫号调用，
+     * 故障队列全部清空后，{@link #dispatchWhenEmptySlot()} 才恢复对该模式叫号。
+     */
+    @Transactional
+    public void drainFaultQueues() {
+        for (ChargingPile p : pileMapper.getAllChargingPiles()) {
+            if (p.getStatus() != PileStatus.FAULT) {
+                continue;
+            }
+            List<ChargingRequest> stranded = queuedRequestsAtPile(p.getPileId());
+            if (stranded.isEmpty()) {
+                continue;
+            }
+            assignFaultGroupKeepLeftoversAtPile(stranded, RequestMode.fromString(p.getPileType()), p.getPileId());
+        }
+    }
+
+    /** 解析排队号数值后缀（F1→1、T12→12），用于"按排队号码先后顺序"排序；号缺失/异常者排最后。 */
+    private static int queueSeq(ChargingRequest r) {
+        String qn = r != null ? r.getQueueNum() : null;
+        if (qn == null) {
+            return Integer.MAX_VALUE;
+        }
+        String digits = qn.replaceAll("\\D", "");
+        return digits.isEmpty() ? Integer.MAX_VALUE : Integer.parseInt(digits);
     }
 
     // ============ 中断会话并生成账单 ============
@@ -576,16 +780,18 @@ public class DispatchService {
         return n;
     }
 
-    /** 全部车位数 = 充电区(每桩 1 正充 + M 排队) + 等候区(各模式容量之和) */
+    /** 全部车位数 = 充电区(每桩 1 正充 + M 排队) + 等候区(共用单一区域，容量 N) */
     public int totalStationCapacity() {
         int cap = 0;
         for (ChargingPile p : pileMapper.getAllChargingPiles()) {
             ChargingQueue q = queueMapper.getChargingQueueByPileId(p.getPileId());
             cap += 1 + (q != null ? q.getQueueLenM() : 0);
         }
-        for (RequestMode m : RequestMode.values()) {
-            WaitingQueue wq = queueMapper.getWaitingQueue(m);
-            cap += (wq != null && wq.getMaxCapacity() != null ? wq.getMaxCapacity() : 0);
+        // 等候区是快/慢「共用的单一物理区域」，容量取 N（两条逻辑队列的 max_capacity 同为 N）；
+        // 不能把两条队列各 N 相加成 2N，否则与准入「按 WAITING 总数判满 N」的口径不一致、8b 批量门槛会偏大。
+        WaitingQueue wq = queueMapper.getWaitingQueue(RequestMode.FAST);
+        if (wq != null && wq.getMaxCapacity() != null) {
+            cap += wq.getMaxCapacity();
         }
         return cap;
     }
